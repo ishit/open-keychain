@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Dominik Schürmann <dominik@dominikschuermann.de>
+ * Copyright (C) 2014-2015 Dominik Schürmann <dominik@dominikschuermann.de>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,12 +18,10 @@
 package org.sufficientlysecure.keychain.ui;
 
 import android.app.Activity;
-import android.app.ProgressDialog;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Message;
-import android.os.Messenger;
 import android.support.v4.app.Fragment;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -35,15 +33,19 @@ import org.spongycastle.bcpg.sig.KeyFlags;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.operations.results.EditKeyResult;
+import org.sufficientlysecure.keychain.operations.results.ExportResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.pgp.KeyRing;
+import org.sufficientlysecure.keychain.pgp.exception.PgpKeyNotFoundException;
+import org.sufficientlysecure.keychain.provider.CachedPublicKeyRing;
 import org.sufficientlysecure.keychain.provider.KeychainContract;
-import org.sufficientlysecure.keychain.service.KeychainService;
-import org.sufficientlysecure.keychain.service.ServiceProgressHandler;
+import org.sufficientlysecure.keychain.provider.ProviderHelper;
+import org.sufficientlysecure.keychain.service.ExportKeyringParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.Algorithm;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.ChangeUnlockParcel;
 import org.sufficientlysecure.keychain.ui.CreateKeyActivity.FragAction;
+import org.sufficientlysecure.keychain.ui.base.CryptoOperationHelper;
 import org.sufficientlysecure.keychain.util.Log;
 import org.sufficientlysecure.keychain.util.Preferences;
 
@@ -62,6 +64,10 @@ public class CreateKeyFinalFragment extends Fragment {
     View mEditButton;
 
     SaveKeyringParcel mSaveKeyringParcel;
+
+    private CryptoOperationHelper<ExportKeyringParcel, ExportResult> mUploadOpHelper;
+    private CryptoOperationHelper<SaveKeyringParcel, EditKeyResult> mCreateOpHelper;
+    private CryptoOperationHelper<SaveKeyringParcel, EditKeyResult> mMoveToCardOpHelper;
 
     public static CreateKeyFinalFragment newInstance() {
         CreateKeyFinalFragment frag = new CreateKeyFinalFragment();
@@ -129,11 +135,26 @@ public class CreateKeyFinalFragment extends Fragment {
             }
         });
 
+        // If this is a debug build, don't upload by default
+        if (Constants.DEBUG) {
+            mUploadCheckbox.setChecked(false);
+        }
+
         return view;
     }
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (mCreateOpHelper != null) {
+            mCreateOpHelper.handleActivityResult(requestCode, resultCode, data);
+        }
+        if (mMoveToCardOpHelper != null) {
+            mMoveToCardOpHelper.handleActivityResult(requestCode, resultCode, data);
+        }
+        if (mUploadOpHelper != null) {
+            mUploadOpHelper.handleActivityResult(requestCode, resultCode, data);
+        }
+
         switch (requestCode) {
             case REQUEST_EDIT_KEY: {
                 if (resultCode == Activity.RESULT_OK) {
@@ -156,7 +177,8 @@ public class CreateKeyFinalFragment extends Fragment {
 
         if (mSaveKeyringParcel == null) {
             mSaveKeyringParcel = new SaveKeyringParcel();
-            if (createKeyActivity.mUseSmartCardSettings) {
+
+            if (createKeyActivity.mCreateYubiKey) {
                 mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
                         2048, null, KeyFlags.SIGN_DATA | KeyFlags.CERTIFY_OTHER, 0L));
                 mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
@@ -164,6 +186,7 @@ public class CreateKeyFinalFragment extends Fragment {
                 mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
                         2048, null, KeyFlags.AUTHENTICATION, 0L));
                 mEditText.setText(R.string.create_key_custom);
+                mEditButton.setEnabled(false);
             } else {
                 mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
                         4096, null, KeyFlags.CERTIFY_OTHER, 0L));
@@ -192,115 +215,190 @@ public class CreateKeyFinalFragment extends Fragment {
         }
     }
 
-
     private void createKey() {
-        Intent intent = new Intent(getActivity(), KeychainService.class);
-        intent.setAction(KeychainService.ACTION_EDIT_KEYRING);
+        final CreateKeyActivity createKeyActivity = (CreateKeyActivity) getActivity();
 
-        ServiceProgressHandler saveHandler = new ServiceProgressHandler(getActivity()) {
+        CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult> createKeyCallback
+                = new CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult>() {
             @Override
-            public void handleMessage(Message message) {
-                // handle messages by standard KeychainIntentServiceHandler first
-                super.handleMessage(message);
+            public SaveKeyringParcel createOperationInput() {
+                return mSaveKeyringParcel;
+            }
 
-                if (message.arg1 == MessageStatus.OKAY.ordinal()) {
-                    // get returned data bundle
-                    Bundle returnData = message.getData();
-                    if (returnData == null) {
-                        return;
-                    }
-                    final EditKeyResult result =
-                            returnData.getParcelable(OperationResult.EXTRA_RESULT);
-                    if (result == null) {
-                        Log.e(Constants.TAG, "result == null");
-                        return;
-                    }
+            @Override
+            public void onCryptoOperationSuccess(EditKeyResult result) {
 
-                    if (result.mMasterKeyId != null && mUploadCheckbox.isChecked()) {
-                        // result will be displayed after upload
-                        uploadKey(result);
-                    } else {
-                        Intent data = new Intent();
-                        data.putExtra(OperationResult.EXTRA_RESULT, result);
-                        getActivity().setResult(Activity.RESULT_OK, data);
-                        getActivity().finish();
-                    }
+                if (createKeyActivity.mCreateYubiKey) {
+                    moveToCard(result);
+                    return;
                 }
+
+                if (result.mMasterKeyId != null && mUploadCheckbox.isChecked()) {
+                    // result will be displayed after upload
+                    uploadKey(result);
+                    return;
+                }
+
+                Intent data = new Intent();
+                data.putExtra(OperationResult.EXTRA_RESULT, result);
+                getActivity().setResult(Activity.RESULT_OK, data);
+                getActivity().finish();
+            }
+
+            @Override
+            public void onCryptoOperationCancelled() {
+
+            }
+
+            @Override
+            public void onCryptoOperationError(EditKeyResult result) {
+                result.createNotify(getActivity()).show();
+            }
+
+            @Override
+            public boolean onCryptoSetProgress(String msg, int progress, int max) {
+                return false;
             }
         };
 
-        // fill values for this action
-        Bundle data = new Bundle();
-
-        // get selected key entries
-        data.putParcelable(KeychainService.EDIT_KEYRING_PARCEL, mSaveKeyringParcel);
-
-        intent.putExtra(KeychainService.EXTRA_DATA, data);
-
-        // Create a new Messenger for the communication back
-        Messenger messenger = new Messenger(saveHandler);
-        intent.putExtra(KeychainService.EXTRA_MESSENGER, messenger);
-
-        saveHandler.showProgressDialog(getString(R.string.progress_building_key),
-                ProgressDialog.STYLE_HORIZONTAL, false);
-
-        getActivity().startService(intent);
+        mCreateOpHelper = new CryptoOperationHelper<>(this, createKeyCallback,
+                R.string.progress_building_key);
+        mCreateOpHelper.cryptoOperation();
     }
 
-    // TODO move into EditKeyOperation
-    private void uploadKey(final EditKeyResult saveKeyResult) {
-        // Send all information needed to service to upload key in other thread
-        final Intent intent = new Intent(getActivity(), KeychainService.class);
+    private void moveToCard(final EditKeyResult saveKeyResult) {
+        final CreateKeyActivity createKeyActivity = (CreateKeyActivity) getActivity();
 
-        intent.setAction(KeychainService.ACTION_UPLOAD_KEYRING);
+        final SaveKeyringParcel changeKeyringParcel;
+        CachedPublicKeyRing key = (new ProviderHelper(getActivity()))
+                .getCachedPublicKeyRing(saveKeyResult.mMasterKeyId);
+        try {
+            changeKeyringParcel = new SaveKeyringParcel(key.getMasterKeyId(), key.getFingerprint());
+        } catch (PgpKeyNotFoundException e) {
+            Log.e(Constants.TAG, "Key that should be moved to YubiKey not found in database!");
+            return;
+        }
 
-        // set data uri as path to keyring
-        Uri blobUri = KeychainContract.KeyRings.buildUnifiedKeyRingUri(
-                saveKeyResult.mMasterKeyId);
-        intent.setData(blobUri);
+        // define subkeys that should be moved to the card
+        Cursor cursor = getActivity().getContentResolver().query(
+                KeychainContract.Keys.buildKeysUri(changeKeyringParcel.mMasterKeyId),
+                new String[]{KeychainContract.Keys.KEY_ID,}, null, null, null
+        );
+        try {
+            while (cursor != null && cursor.moveToNext()) {
+                long subkeyId = cursor.getLong(0);
+                changeKeyringParcel.getOrCreateSubkeyChange(subkeyId).mMoveKeyToCard = true;
+            }
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
 
-        // fill values for this action
-        Bundle data = new Bundle();
+        // define new PIN and Admin PIN for the card
+        changeKeyringParcel.mCardPin = createKeyActivity.mYubiKeyPin;
+        changeKeyringParcel.mCardAdminPin = createKeyActivity.mYubiKeyAdminPin;
 
-        // upload to favorite keyserver
-        String keyserver = Preferences.getPreferences(getActivity()).getPreferredKeyserver();
-        data.putString(KeychainService.UPLOAD_KEY_SERVER, keyserver);
+        CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult> callback
+                = new CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult>() {
 
-        intent.putExtra(KeychainService.EXTRA_DATA, data);
-
-        ServiceProgressHandler saveHandler = new ServiceProgressHandler(getActivity()) {
             @Override
-            public void handleMessage(Message message) {
-                // handle messages by standard KeychainIntentServiceHandler first
-                super.handleMessage(message);
+            public SaveKeyringParcel createOperationInput() {
+                return changeKeyringParcel;
+            }
 
-                if (message.arg1 == MessageStatus.OKAY.ordinal()) {
-                    // TODO: upload operation needs a result!
-                    // TODO: then combine these results
-                    //if (result.getResult() == OperationResultParcel.RESULT_OK) {
-                    //Notify.create(getActivity(), R.string.key_send_success,
-                    //Notify.Style.OK).show();
+            @Override
+            public void onCryptoOperationSuccess(EditKeyResult result) {
+                handleResult(result);
+            }
 
-                    Intent data = new Intent();
-                    data.putExtra(OperationResult.EXTRA_RESULT, saveKeyResult);
-                    getActivity().setResult(Activity.RESULT_OK, data);
-                    getActivity().finish();
+            @Override
+            public void onCryptoOperationCancelled() {
+
+            }
+
+            @Override
+            public void onCryptoOperationError(EditKeyResult result) {
+                handleResult(result);
+            }
+
+            public void handleResult(EditKeyResult result) {
+                // merge logs of createKey with moveToCard
+                saveKeyResult.getLog().add(result, 0);
+
+                if (result.mMasterKeyId != null && mUploadCheckbox.isChecked()) {
+                    // result will be displayed after upload
+                    uploadKey(saveKeyResult);
+                    return;
                 }
+
+                Intent data = new Intent();
+                data.putExtra(OperationResult.EXTRA_RESULT, saveKeyResult);
+                getActivity().setResult(Activity.RESULT_OK, data);
+                getActivity().finish();
+            }
+
+            @Override
+            public boolean onCryptoSetProgress(String msg, int progress, int max) {
+                return false;
             }
         };
 
-        // Create a new Messenger for the communication back
-        Messenger messenger = new Messenger(saveHandler);
-        intent.putExtra(KeychainService.EXTRA_MESSENGER, messenger);
 
-        // show progress dialog
-        saveHandler.showProgressDialog(
-                getString(R.string.progress_uploading),
-                ProgressDialog.STYLE_HORIZONTAL, false);
+        mMoveToCardOpHelper = new CryptoOperationHelper<>(this, callback, R.string.progress_modify);
+        mMoveToCardOpHelper.cryptoOperation();
+    }
 
-        // start service with intent
-        getActivity().startService(intent);
+    private void uploadKey(final EditKeyResult saveKeyResult) {
+        // set data uri as path to keyring
+        final Uri blobUri = KeychainContract.KeyRings.buildUnifiedKeyRingUri(
+                saveKeyResult.mMasterKeyId);
+        // upload to favorite keyserver
+        final String keyserver = Preferences.getPreferences(getActivity()).getPreferredKeyserver();
 
+        CryptoOperationHelper.Callback<ExportKeyringParcel, ExportResult> callback
+                = new CryptoOperationHelper.Callback<ExportKeyringParcel, ExportResult>() {
+
+            @Override
+            public ExportKeyringParcel createOperationInput() {
+                return new ExportKeyringParcel(keyserver, blobUri);
+            }
+
+            @Override
+            public void onCryptoOperationSuccess(ExportResult result) {
+                handleResult(result);
+            }
+
+            @Override
+            public void onCryptoOperationCancelled() {
+
+            }
+
+            @Override
+            public void onCryptoOperationError(ExportResult result) {
+                handleResult(result);
+            }
+
+            public void handleResult(ExportResult result) {
+                // TODO: ExportOperation UPLOAD_KEYSERVER needs logs!
+                // TODO: then merge logs here!
+                //saveKeyResult.getLog().add(result, 0);
+
+                Intent data = new Intent();
+                data.putExtra(OperationResult.EXTRA_RESULT, saveKeyResult);
+                getActivity().setResult(Activity.RESULT_OK, data);
+                getActivity().finish();
+            }
+
+            @Override
+            public boolean onCryptoSetProgress(String msg, int progress, int max) {
+                return false;
+            }
+        };
+
+
+        mUploadOpHelper = new CryptoOperationHelper<>(this, callback, R.string.progress_uploading);
+        mUploadOpHelper.cryptoOperation();
     }
 
 }

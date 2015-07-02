@@ -94,7 +94,7 @@ public abstract class BaseNfcActivity extends BaseActivity {
     public void onNewIntent(Intent intent) {
         if (NfcAdapter.ACTION_TAG_DISCOVERED.equals(intent.getAction())) {
             try {
-                handleNdefDiscoveredIntent(intent);
+                handleTagDiscoveredIntent(intent);
             } catch (CardException e) {
                 handleNfcError(e);
             } catch (IOException e) {
@@ -179,8 +179,10 @@ public abstract class BaseNfcActivity extends BaseActivity {
                 Notify.create(this, getString(R.string.error_nfc_unknown), Style.WARN).show();
                 break;
             }
-            default:
+            default: {
                 Notify.create(this, getString(R.string.error_nfc, e.getMessage()), Style.WARN).show();
+                break;
+            }
         }
 
     }
@@ -269,7 +271,7 @@ public abstract class BaseNfcActivity extends BaseActivity {
      * This method is called by onNewIntent above upon discovery of an NFC tag.
      * It handles initialization and login to the application, subsequently
      * calls either nfcCalculateSignature() or nfcDecryptSessionKey(), then
-     * finishes the activity with an appropiate result.
+     * finishes the activity with an appropriate result.
      *
      * On general communication, see also
      * http://www.cardwerk.com/smartcards/smartcard_standard_ISO7816-4_annex-a.aspx
@@ -278,7 +280,7 @@ public abstract class BaseNfcActivity extends BaseActivity {
      * on ISO SmartCard Systems specification.
      *
      */
-    protected void handleNdefDiscoveredIntent(Intent intent) throws IOException {
+    protected void handleTagDiscoveredIntent(Intent intent) throws IOException {
 
         Tag detectedTag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
 
@@ -310,9 +312,6 @@ public abstract class BaseNfcActivity extends BaseActivity {
         mPw1ValidatedForSignature = false;
         mPw1ValidatedForDecrypt = false;
         mPw3Validated = false;
-
-        // TODO: Handle non-default Admin PIN
-        mAdminPin = new Passphrase("12345678");
 
         onNfcPerform();
 
@@ -569,12 +568,12 @@ public abstract class BaseNfcActivity extends BaseActivity {
      */
     public void nfcVerifyPIN(int mode) throws IOException {
         if (mPin != null || mode == 0x83) {
-            byte[] pin;
 
+            byte[] pin;
             if (mode == 0x83) {
-                pin = new String(mAdminPin.getCharArray()).getBytes();
+                pin = mAdminPin.toStringUnsafe().getBytes();
             } else {
-                pin = new String(mPin.getCharArray()).getBytes();
+                pin = mPin.toStringUnsafe().getBytes();
             }
 
             // SW1/2 0x9000 is the generic "ok" response, which we expect most of the time.
@@ -611,12 +610,11 @@ public abstract class BaseNfcActivity extends BaseActivity {
      * @param pw For PW1, this is 0x81. For PW3 (Admin PIN), mode is 0x83.
      * @param newPinString The new PW1 or PW3.
      */
-    public void nfcModifyPIN(int pw, String newPinString) throws IOException {
+    public void nfcModifyPIN(int pw, byte[] newPin) throws IOException {
         final int MAX_PW1_LENGTH_INDEX = 1;
         final int MAX_PW3_LENGTH_INDEX = 3;
 
         byte[] pwStatusBytes = nfcGetPwStatusBytes();
-        byte[] newPin = newPinString.getBytes();
 
         if (pw == 0x81) {
             if (newPin.length < 6 || newPin.length > pwStatusBytes[MAX_PW1_LENGTH_INDEX]) {
@@ -631,11 +629,10 @@ public abstract class BaseNfcActivity extends BaseActivity {
         }
 
         byte[] pin;
-
         if (pw == 0x83) {
-            pin = new String(mAdminPin.getCharArray()).getBytes();
+            pin = mAdminPin.toStringUnsafe().getBytes();
         } else {
-            pin = new String(mPin.getCharArray()).getBytes();
+            pin = mPin.toStringUnsafe().getBytes();
         }
 
         // Command APDU for CHANGE REFERENCE DATA command (page 32)
@@ -700,7 +697,7 @@ public abstract class BaseNfcActivity extends BaseActivity {
             throw new IOException("Invalid key slot");
         }
 
-        RSAPrivateCrtKey crtSecretKey = null;
+        RSAPrivateCrtKey crtSecretKey;
         try {
             secretKey.unlock(passphrase);
             crtSecretKey = secretKey.getCrtSecretKey();
@@ -719,7 +716,7 @@ public abstract class BaseNfcActivity extends BaseActivity {
         }
 
         if (!mPw3Validated) {
-            nfcVerifyPIN(0x83); // (Verify PW1 with mode 83)
+            nfcVerifyPIN(0x83); // (Verify PW3 with mode 83)
         }
 
         byte[] header= Hex.decode(

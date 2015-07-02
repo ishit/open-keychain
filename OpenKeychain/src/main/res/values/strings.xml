@@ -63,7 +63,8 @@
     <string name="btn_decrypt_verify_file">"Decrypt, verify, and save file"</string>
     <string name="btn_encrypt_share_file">"Encrypt and share file"</string>
     <string name="btn_encrypt_save_file">"Encrypt and save file"</string>
-    <string name="btn_save">"Save file"</string>
+    <string name="btn_save_file">"Save file"</string>
+    <string name="btn_save">"Save"</string>
     <string name="btn_view_log">"View log"</string>
     <string name="btn_do_not_save">"Cancel"</string>
     <string name="btn_delete">"Delete"</string>
@@ -107,6 +108,8 @@
     <string name="menu_advanced">"Extended information"</string>
     <string name="menu_certify_fingerprint">"Confirm via fingerprint comparison"</string>
     <string name="menu_export_log">"Export Log"</string>
+
+    <string name="menu_keyserver_add">"Add"</string>
 
     <!-- label -->
     <string name="label_message">"Text"</string>
@@ -152,13 +155,17 @@
     <string name="label_send_key">"Synchronize with the cloud"</string>
     <string name="label_fingerprint">"Fingerprint"</string>
     <string name="expiry_date_dialog_title">"Set expiry date"</string>
-    <string name="label_first_keyserver_is_used">"(First keyserver listed is preferred)"</string>
+    <string name="label_keyservers_title">"Keyservers"</string>
+    <string name="label_keyserver_settings_hint">"Drag to change order, tap to edit/delete"</string>
+    <string name="label_selected_keyserver_title">"Selected keyserver"</string>
     <string name="label_preferred">"preferred"</string>
     <string name="label_enable_compression">"Enable compression"</string>
     <string name="label_encrypt_filenames">"Encrypt filenames"</string>
     <string name="label_hidden_recipients">"Hide recipients"</string>
+
     <string name="label_verify_keyserver">"Verify keyserver"</string>
     <string name="label_enter_keyserver_url">"Enter keyserver URL"</string>
+    <string name="label_keyserver_dialog_delete">"Delete keyserver"</string>
 
     <string name="pref_keyserver">"OpenPGP keyservers"</string>
     <string name="pref_keyserver_summary">"Search keys on selected OpenPGP keyservers (HKP protocol)"</string>
@@ -335,6 +342,8 @@
     <string name="progress_modify_subkeystrip">"stripping subkeys…"</string>
     <string name="progress_modify_subkeyadd">"adding subkeys…"</string>
     <string name="progress_modify_passphrase">"changing password…"</string>
+    <string name="progress_modify_pin">"changing PIN…"</string>
+    <string name="progress_modify_admin_pin">"changing Admin PIN…"</string>
 
     <plurals name="progress_exporting_key">
         <item quantity="one">"exporting key…"</item>
@@ -653,6 +662,13 @@
     <string name="create_key_add_email_text">"Additional email addresses are also associated to this key and can be used for secure communication."</string>
     <string name="create_key_email_already_exists_text">"Email address has already been added"</string>
     <string name="create_key_email_invalid_email">"Email address format is invalid"</string>
+    <string name="create_key_yubi_key_pin_text">"Please remember the PIN, it is required to use your YubiKey later. Please write down the Admin PIN and store it in a safe place."</string>
+    <string name="create_key_yubi_key_pin">"PIN"</string>
+    <string name="create_key_yubi_key_admin_pin">"Admin PIN"</string>
+    <string name="create_key_yubi_key_pin_repeat_text">"Please enter the PIN and Admin PIN to proceed."</string>
+    <string name="create_key_yubi_key_pin_repeat">"Repeat PIN"</string>
+    <string name="create_key_yubi_key_admin_pin_repeat">"Repeat Admin PIN"</string>
+    <string name="create_key_yubi_key_pin_not_correct">"PIN is not correct!"</string>
 
     <!-- View key -->
     <string name="view_key_revoked">"Revoked: Key must not be used anymore!"</string>
@@ -664,12 +680,15 @@
 
     <string name="view_key_fragment_no_system_contact">"&lt;none&gt;"</string>
 
-    <!-- Add keyserver -->
+    <!-- Add/Edit keyserver -->
     <string name="add_keyserver_dialog_title">"Add keyserver"</string>
+    <string name="edit_keyserver_dialog_title">"Edit keyserver"</string>
     <string name="add_keyserver_verified">"Keyserver verified!"</string>
     <string name="add_keyserver_without_verification">"Keyserver added without verification."</string>
     <string name="add_keyserver_invalid_url">"Invalid URL!"</string>
     <string name="add_keyserver_connection_failed">"Failed to connect to keyserver. Please check the URL and your internet connection."</string>
+    <string name="keyserver_preference_deleted">"%s deleted"</string>
+    <string name="keyserver_preference_cannot_delete_last">"Cannot delete last keyserver. At least one is required!"</string>
 
     <!-- Navigation Drawer -->
     <string name="nav_keys">"Keys"</string>
@@ -941,6 +960,8 @@
     <string name="msg_mf_notation_empty">"Adding empty notation packet"</string>
     <string name="msg_mf_notation_pin">"Adding PIN notation packet"</string>
     <string name="msg_mf_passphrase">"Changing password for keyring"</string>
+    <string name="msg_mf_pin">"Changing PIN on card"</string>
+    <string name="msg_mf_admin_pin">"Changing Admin PIN on card"</string>
     <string name="msg_mf_passphrase_key">"Re-encrypting subkey %s with new password"</string>
     <string name="msg_mf_passphrase_empty_retry">"Setting new password failed, trying again with empty old password"</string>
     <string name="msg_mf_passphrase_fail">"Password for subkey could not be changed! (Does it have a different one from the other keys?)"</string>
@@ -1213,6 +1234,15 @@
 
     <string name="msg_download_query_failed">"An error occurred when searching for keys."</string>
 
+    <!-- Messages for Keybase Verification operation -->
+    <string name="msg_keybase_verification">"Attempting keybase verification for %s"</string>
+    <string name="msg_keybase_error_no_prover">"No proof checker found for %s"</string>
+    <string name="msg_keybase_error_fetching_evidence">"Problem with fetching proof"</string>
+    <string name="msg_keybase_error_key_mismatch">"Key fingerprint doesn’t match that in proof post"</string>
+    <string name="msg_keybase_error_dns_fail">"DNS TXT Record retrieval failed"</string>
+    <string name="msg_keybase_error_specific">"%s"</string>
+    <string name="msg_keybase_error_msg_payload_mismatch">"Decrypted proof post does not match expected value"</string>
+
     <!-- Messages for Export Log operation -->
     <string name="msg_export_log_start">"Exporting log"</string>
     <string name="msg_export_log_error_fopen">"Error opening file"</string>
@@ -1236,8 +1266,8 @@
     <string name="first_time_import_key">"Import key from file"</string>
     <string name="first_time_yubikey">"Use YubiKey NEO"</string>
     <string name="first_time_skip">"Skip Setup"</string>
-    <string name="first_time_blank_smartcard_title">"Blank smart card / YubiKey detected"</string>
-    <string name="first_time_blank_smartcard_message">"Would you like to generate a smart card compatible key?"</string>
+    <string name="first_time_blank_yubikey">"Would you like to use this blank YubiKey NEO with OpenKeychain?\n\nPlease take away the YubiKey now, you will be prompted when it is needed again!"</string>
+    <string name="first_time_blank_yubikey_yes">"Use this YubiKey"</string>
 
     <!-- unsorted -->
     <string name="section_certifier_id">"Certifier"</string>
@@ -1351,5 +1381,6 @@
     <string name="file_delete_ok">"Original file deleted."</string>
     <string name="file_delete_none">"No file deleted! (Already deleted?)"</string>
     <string name="file_delete_exception">"Original file could not be deleted!"</string>
+    <string name="error_clipboard_empty">"Clipboard is empty!"</string>
 
 </resources>

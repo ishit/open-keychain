@@ -17,9 +17,8 @@
 
 package org.sufficientlysecure.keychain.ui;
 
-import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.Intent;
+import android.nfc.NfcAdapter;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentTransaction;
@@ -43,7 +42,9 @@ public class CreateKeyActivity extends BaseNfcActivity {
     public static final String EXTRA_FIRST_TIME = "first_time";
     public static final String EXTRA_ADDITIONAL_EMAILS = "additional_emails";
     public static final String EXTRA_PASSPHRASE = "passphrase";
-    public static final String EXTRA_USE_SMART_CARD_SETTINGS = "use_smart_card_settings";
+    public static final String EXTRA_CREATE_YUBI_KEY = "create_yubi_key";
+    public static final String EXTRA_YUBI_KEY_PIN = "yubi_key_pin";
+    public static final String EXTRA_YUBI_KEY_ADMIN_PIN = "yubi_key_admin_pin";
 
     public static final String EXTRA_NFC_USER_ID = "nfc_user_id";
     public static final String EXTRA_NFC_AID = "nfc_aid";
@@ -56,13 +57,32 @@ public class CreateKeyActivity extends BaseNfcActivity {
     ArrayList<String> mAdditionalEmails;
     Passphrase mPassphrase;
     boolean mFirstTime;
-    boolean mUseSmartCardSettings;
+    boolean mCreateYubiKey;
+    Passphrase mYubiKeyPin;
+    Passphrase mYubiKeyAdminPin;
 
     Fragment mCurrentFragment;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // React on NDEF_DISCOVERED from Manifest
+        // NOTE: ACTION_NDEF_DISCOVERED and not ACTION_TAG_DISCOVERED like in BaseNfcActivity
+        if (NfcAdapter.ACTION_NDEF_DISCOVERED.equals(getIntent().getAction())) {
+            try {
+                handleTagDiscoveredIntent(getIntent());
+            } catch (CardException e) {
+                handleNfcError(e);
+            } catch (IOException e) {
+                handleNfcError(e);
+            }
+
+            setTitle(R.string.title_manage_my_keys);
+
+            // done
+            return;
+        }
 
         // Check whether we're recreating a previously destroyed instance
         if (savedInstanceState != null) {
@@ -72,7 +92,9 @@ public class CreateKeyActivity extends BaseNfcActivity {
             mAdditionalEmails = savedInstanceState.getStringArrayList(EXTRA_ADDITIONAL_EMAILS);
             mPassphrase = savedInstanceState.getParcelable(EXTRA_PASSPHRASE);
             mFirstTime = savedInstanceState.getBoolean(EXTRA_FIRST_TIME);
-            mUseSmartCardSettings = savedInstanceState.getBoolean(EXTRA_USE_SMART_CARD_SETTINGS);
+            mCreateYubiKey = savedInstanceState.getBoolean(EXTRA_CREATE_YUBI_KEY);
+            mYubiKeyPin = savedInstanceState.getParcelable(EXTRA_YUBI_KEY_PIN);
+            mYubiKeyAdminPin = savedInstanceState.getParcelable(EXTRA_YUBI_KEY_ADMIN_PIN);
 
             mCurrentFragment = getSupportFragmentManager().findFragmentByTag(FRAGMENT_TAG);
         } else {
@@ -82,24 +104,32 @@ public class CreateKeyActivity extends BaseNfcActivity {
             mName = intent.getStringExtra(EXTRA_NAME);
             mEmail = intent.getStringExtra(EXTRA_EMAIL);
             mFirstTime = intent.getBooleanExtra(EXTRA_FIRST_TIME, false);
-            mUseSmartCardSettings = intent.getBooleanExtra(EXTRA_USE_SMART_CARD_SETTINGS, false);
+            mCreateYubiKey = intent.getBooleanExtra(EXTRA_CREATE_YUBI_KEY, false);
 
             if (intent.hasExtra(EXTRA_NFC_FINGERPRINTS)) {
                 byte[] nfcFingerprints = intent.getByteArrayExtra(EXTRA_NFC_FINGERPRINTS);
                 String nfcUserId = intent.getStringExtra(EXTRA_NFC_USER_ID);
                 byte[] nfcAid = intent.getByteArrayExtra(EXTRA_NFC_AID);
 
-                Fragment frag2 = CreateKeyYubiKeyImportFragment.createInstance(
-                        nfcFingerprints, nfcAid, nfcUserId);
-                loadFragment(frag2, FragAction.START);
+                if (containsKeys(nfcFingerprints)) {
+                    Fragment frag = CreateYubiKeyImportFragment.newInstance(
+                            nfcFingerprints, nfcAid, nfcUserId);
+                    loadFragment(frag, FragAction.START);
 
-                setTitle(R.string.title_import_keys);
+                    setTitle(R.string.title_import_keys);
+                } else {
+                    Fragment frag = CreateYubiKeyBlankFragment.newInstance();
+                    loadFragment(frag, FragAction.START);
+                    setTitle(R.string.title_manage_my_keys);
+                }
+
+                // done
                 return;
-            } else {
-                CreateKeyStartFragment frag = CreateKeyStartFragment.newInstance();
-                loadFragment(frag, FragAction.START);
             }
 
+            // normal key creation
+            CreateKeyStartFragment frag = CreateKeyStartFragment.newInstance();
+            loadFragment(frag, FragAction.START);
         }
 
         if (mFirstTime) {
@@ -122,16 +152,7 @@ public class CreateKeyActivity extends BaseNfcActivity {
         byte[] nfcAid = nfcGetAid();
         String userId = nfcGetUserId();
 
-        // If all fingerprint bytes are 0, the card contains no keys.
-        boolean cardContainsKeys = false;
-        for (byte b : scannedFingerprints) {
-            if (b != 0) {
-                cardContainsKeys = true;
-                break;
-            }
-        }
-
-        if (cardContainsKeys) {
+        if (containsKeys(scannedFingerprints)) {
             try {
                 long masterKeyId = KeyFormattingUtils.getKeyIdFromFingerprint(scannedFingerprints);
                 CachedPublicKeyRing ring = new ProviderHelper(this).getCachedPublicKeyRing(masterKeyId);
@@ -146,23 +167,27 @@ public class CreateKeyActivity extends BaseNfcActivity {
                 finish();
 
             } catch (PgpKeyNotFoundException e) {
-                Fragment frag = CreateKeyYubiKeyImportFragment.createInstance(
+                Fragment frag = CreateYubiKeyImportFragment.newInstance(
                         scannedFingerprints, nfcAid, userId);
                 loadFragment(frag, FragAction.TO_RIGHT);
             }
         } else {
-            AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            builder.setTitle(R.string.first_time_blank_smartcard_title)
-                    .setMessage(R.string.first_time_blank_smartcard_message)
-                    .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int button) {
-                            CreateKeyActivity.this.mUseSmartCardSettings = true;
-                        }
-                    })
-                    .setNegativeButton(android.R.string.no, null).show();
+            Fragment frag = CreateYubiKeyBlankFragment.newInstance();
+            loadFragment(frag, FragAction.TO_RIGHT);
         }
 
+    }
+
+    private boolean containsKeys(byte[] scannedFingerprints) {
+        // If all fingerprint bytes are 0, the card contains no keys.
+        boolean cardContainsKeys = false;
+        for (byte b : scannedFingerprints) {
+            if (b != 0) {
+                cardContainsKeys = true;
+                break;
+            }
+        }
+        return cardContainsKeys;
     }
 
     @Override
@@ -174,7 +199,9 @@ public class CreateKeyActivity extends BaseNfcActivity {
         outState.putStringArrayList(EXTRA_ADDITIONAL_EMAILS, mAdditionalEmails);
         outState.putParcelable(EXTRA_PASSPHRASE, mPassphrase);
         outState.putBoolean(EXTRA_FIRST_TIME, mFirstTime);
-        outState.putBoolean(EXTRA_USE_SMART_CARD_SETTINGS, mUseSmartCardSettings);
+        outState.putBoolean(EXTRA_CREATE_YUBI_KEY, mCreateYubiKey);
+        outState.putParcelable(EXTRA_YUBI_KEY_PIN, mYubiKeyPin);
+        outState.putParcelable(EXTRA_YUBI_KEY_ADMIN_PIN, mYubiKeyAdminPin);
     }
 
     @Override
@@ -182,7 +209,7 @@ public class CreateKeyActivity extends BaseNfcActivity {
         setContentView(R.layout.create_key_activity);
     }
 
-    public static enum FragAction {
+    public enum FragAction {
         START,
         TO_RIGHT,
         TO_LEFT

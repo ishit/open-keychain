@@ -18,7 +18,6 @@
 package org.sufficientlysecure.keychain.ui;
 
 import android.app.Activity;
-import android.app.ProgressDialog;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -26,7 +25,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.os.Messenger;
-import android.os.Parcelable;
 import android.support.v4.app.LoaderManager;
 import android.support.v4.content.CursorLoader;
 import android.support.v4.content.Loader;
@@ -40,9 +38,6 @@ import android.widget.ListView;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.compatibility.DialogFragmentWorkaround;
-import org.sufficientlysecure.keychain.operations.results.DecryptVerifyResult;
-import org.sufficientlysecure.keychain.operations.results.EditKeyResult;
-import org.sufficientlysecure.keychain.operations.results.InputPendingResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.LogType;
 import org.sufficientlysecure.keychain.operations.results.SingletonResult;
@@ -54,8 +49,6 @@ import org.sufficientlysecure.keychain.provider.KeychainContract;
 import org.sufficientlysecure.keychain.provider.KeychainContract.UserPackets;
 import org.sufficientlysecure.keychain.provider.ProviderHelper;
 import org.sufficientlysecure.keychain.provider.ProviderHelper.NotFoundException;
-import org.sufficientlysecure.keychain.service.KeychainService;
-import org.sufficientlysecure.keychain.service.ServiceProgressHandler;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.ChangeUnlockParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.SubkeyChange;
@@ -65,7 +58,12 @@ import org.sufficientlysecure.keychain.ui.adapter.SubkeysAddedAdapter;
 import org.sufficientlysecure.keychain.ui.adapter.UserIdsAdapter;
 import org.sufficientlysecure.keychain.ui.adapter.UserIdsAddedAdapter;
 import org.sufficientlysecure.keychain.ui.base.CryptoOperationFragment;
-import org.sufficientlysecure.keychain.ui.dialog.*;
+import org.sufficientlysecure.keychain.ui.dialog.AddSubkeyDialogFragment;
+import org.sufficientlysecure.keychain.ui.dialog.AddUserIdDialogFragment;
+import org.sufficientlysecure.keychain.ui.dialog.EditSubkeyDialogFragment;
+import org.sufficientlysecure.keychain.ui.dialog.EditSubkeyExpiryDialogFragment;
+import org.sufficientlysecure.keychain.ui.dialog.EditUserIdDialogFragment;
+import org.sufficientlysecure.keychain.ui.dialog.SetPassphraseDialogFragment;
 import org.sufficientlysecure.keychain.ui.util.Notify;
 import org.sufficientlysecure.keychain.util.Log;
 import org.sufficientlysecure.keychain.util.Passphrase;
@@ -439,44 +437,50 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
                         }
                         break;
                     }
-                    case EditSubkeyDialogFragment.MESSAGE_KEYTOCARD: {
-                        Activity activity = EditKeyFragment.this.getActivity();
-                        SecretKeyType secretKeyType = mSubkeysAdapter.getSecretKeyType(position);
-                        if (secretKeyType == SecretKeyType.DIVERT_TO_CARD ||
-                            secretKeyType == SecretKeyType.GNU_DUMMY) {
-                            Notify.create(activity, R.string.edit_key_error_bad_nfc_stripped, Notify.Style.ERROR)
-                                    .show((ViewGroup) activity.findViewById(R.id.import_snackbar));
-                            break;
-                        }
-                        int algorithm = mSubkeysAdapter.getAlgorithm(position);
-                        // these are the PGP constants for RSA_GENERAL, RSA_ENCRYPT and RSA_SIGN
-                        if (algorithm != 1 && algorithm != 2 && algorithm != 3) {
-                            Notify.create(activity, R.string.edit_key_error_bad_nfc_algo, Notify.Style.ERROR)
-                                    .show((ViewGroup) activity.findViewById(R.id.import_snackbar));
-                            break;
-                        }
-                        if (mSubkeysAdapter.getKeySize(position) != 2048) {
-                            Notify.create(activity, R.string.edit_key_error_bad_nfc_size, Notify.Style.ERROR)
-                                    .show((ViewGroup) activity.findViewById(R.id.import_snackbar));
-                            break;
-                        }
-
-
-                        SubkeyChange change;
-                        change = mSaveKeyringParcel.getSubkeyChange(keyId);
-                        if (change == null) {
-                            mSaveKeyringParcel.mChangeSubKeys.add(
-                                    new SubkeyChange(keyId, false, true)
-                            );
-                            break;
-                        }
-                        // toggle
-                        change.mMoveKeyToCard = !change.mMoveKeyToCard;
-                        if (change.mMoveKeyToCard && change.mDummyStrip) {
-                            // User had chosen to strip key, but now wants to divert it.
-                            change.mDummyStrip = false;
-                        }
+                    case EditSubkeyDialogFragment.MESSAGE_MOVE_KEY_TO_CARD: {
+                        // TODO: enable later when Admin PIN handling is resolved
+                        Notify.create(getActivity(),
+                                "This feature will be available in an upcoming OpenKeychain version.",
+                                Notify.Style.WARN).show();
                         break;
+
+//                        Activity activity = EditKeyFragment.this.getActivity();
+//                        SecretKeyType secretKeyType = mSubkeysAdapter.getSecretKeyType(position);
+//                        if (secretKeyType == SecretKeyType.DIVERT_TO_CARD ||
+//                            secretKeyType == SecretKeyType.GNU_DUMMY) {
+//                            Notify.create(activity, R.string.edit_key_error_bad_nfc_stripped, Notify.Style.ERROR)
+//                                    .show((ViewGroup) activity.findViewById(R.id.import_snackbar));
+//                            break;
+//                        }
+//                        int algorithm = mSubkeysAdapter.getAlgorithm(position);
+//                        // these are the PGP constants for RSA_GENERAL, RSA_ENCRYPT and RSA_SIGN
+//                        if (algorithm != 1 && algorithm != 2 && algorithm != 3) {
+//                            Notify.create(activity, R.string.edit_key_error_bad_nfc_algo, Notify.Style.ERROR)
+//                                    .show((ViewGroup) activity.findViewById(R.id.import_snackbar));
+//                            break;
+//                        }
+//                        if (mSubkeysAdapter.getKeySize(position) != 2048) {
+//                            Notify.create(activity, R.string.edit_key_error_bad_nfc_size, Notify.Style.ERROR)
+//                                    .show((ViewGroup) activity.findViewById(R.id.import_snackbar));
+//                            break;
+//                        }
+//
+//
+//                        SubkeyChange change;
+//                        change = mSaveKeyringParcel.getSubkeyChange(keyId);
+//                        if (change == null) {
+//                            mSaveKeyringParcel.mChangeSubKeys.add(
+//                                    new SubkeyChange(keyId, false, true)
+//                            );
+//                            break;
+//                        }
+//                        // toggle
+//                        change.mMoveKeyToCard = !change.mMoveKeyToCard;
+//                        if (change.mMoveKeyToCard && change.mDummyStrip) {
+//                            // User had chosen to strip key, but now wants to divert it.
+//                            change.mDummyStrip = false;
+//                        }
+//                        break;
                     }
                 }
                 getLoaderManager().getLoader(LOADER_ID_SUBKEYS).forceLoad();
@@ -609,12 +613,12 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
     }
 
     @Override
-    protected SaveKeyringParcel createOperationInput() {
+    public SaveKeyringParcel createOperationInput() {
         return mSaveKeyringParcel;
     }
 
     @Override
-    protected void onCryptoOperationSuccess(OperationResult result) {
+    public void onCryptoOperationSuccess(OperationResult result) {
 
         // if good -> finish, return result to showkey and display there!
         Intent intent = new Intent();
