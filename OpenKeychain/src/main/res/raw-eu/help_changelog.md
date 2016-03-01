@@ -1,15 +1,56 @@
 [//]: # (OHARRA: Meseez jarri esaldi bakoitza bere lerroan, Transifex-ek lerroak bere itzulpen eremuan jartzen ditu!)
 
+## 3.8
+
+  * Redesigned key editing
+  * Choose remember time individually when entering passwords
+  * Facebook key import
+
+
+## 3.7
+
+  * Hobetuta Android 6 sostengua (baimenak, baterapena idazki hautapenean)
+  * API: 10 bertsioa
+
+
+## 3.6
+
+  * Babeskopia enkriptatuak
+  * Segurtasun zuzenketak kanpoko segurtasun auditorian ohinarrituz
+  * YubiKey NEO giltza sortzeko laguntzailea
+  * Ohinarrizko barneko MIME sostengua
+  * Berezgaitasunezko giltza aldiberetzea
+  * Ezaugarri esperimentala: loturatu giltzak Github, Twitter kontuetara
+  * Ezaugarri esperimentala: giltza baieztapena esaldien bidez
+  * Ezaugarri esperimentala: azalgai iluna
+  * API: 9 bertsioa
+
+
+## 3.5
+
+  * Giltza ukapena giltza ezabatzean
+  * Hobetuta segurtasun gabeko kriptografia egiaztapena
+  * Zuzenduta: OpenKeychain ez da isten laguntzailearen lehen jardunaren ondoren
+  * API: 8 bertsioa
+
+
+## 3.4
+
+  * Izengabeko giltza jeisketa Tor gain
+  * Proxy sostengua
+  * YubiKey akats kudeaketa hobea
+
 
 ## 3.3
 
-  * New decryption screen
-  * Decryption of multiple files at once
-  * Better handling of YubiKey errors
+  * Azalpen ikusleiho berria
+  * Agiri ugariren azalpena aldiberean
+  * YubiKey akatsen kudeaketa hobea
+
 
 ## 3.2
 
-  * First version with full YubiKey support available from the user interface: Edit keys, bind YubiKey to keys,...
+  * Lehen bertsioa YubiKey sostengu osoarekin eskuragarri erabiltzaile interfazetik: Editatu giltzak, lotu YubiKey giltzekin,...
   Material diseinua
   * QR Kode eskaneatzea baterapena (Baimen berriak beharrezkoak)
   * Hobetuta giltza sortze laguntzailea
@@ -55,10 +96,10 @@
 
 ## 3.0
 
-  * Propose installable compatible apps in apps list
+  * Eskaini bateragarritasun ezegonkorreko aplikazioak aplikazio zerrendan
   * Diseinu berria dekriptaketa ikusleihoentzat
   * Zuzenketa ugari giltza inportatzean, zuzenduta baita ere giltzen zuriketa
-  * Honor and display key authenticate flags
+  * Ohoretu eta erakutsi giltza egiaztapen ikurrak
   * Erabiltzaile interfazea norbere giltzak sortzeko
   * Zuzenduta erabiltzaile id ukatze egiaztagiriak
   * Hodei bilaketa berria (ohiko giltza-zerbitzari eta keybase.io gain bilatzen da)
@@ -68,74 +109,74 @@
 
 ## 2.9.2
 
-  * Fix keys broken in 2.9.1
-  * Experimental YubiKey support: Decryption now working via API
+  * Zuzenduta 2.9.1-ko giltza haustea
+  * YubiKey sostengu esperimentala. Dekriptaketak orain API bidez egiten du lan
 
 
 ## 2.9.1
 
-  * Split encrypt screen into two
-  * Fix key flags handling (now supporting Mailvelope 0.7 keys)
-  * Improved passphrase handling
-  * Key sharing via SafeSlinger
-  * Experimental YubiKey support: Preference to allow other PINs, currently only signing via the OpenPGP API works, not inside of OpenKeychain
+  * Banandu enkriptaketa ikusleihoa bitan
+  * Zuzenduta giltza ikur kudeaketa (orain Mailvelope 0.7 giltzak sostengatzen dira)
+  * Hobetuta sar-esaldi kudeaketa
+  * Giltza elkarbanatzea SafeSlinger bidez
+  * YubiKey sostengu esperimentala: Hobespena beste PIN batzuk ahalbidetzeko, oraingoz OpenPGP API bidezko sinaketak besterik ez du lan egiten, ez OpenKeychain-en barne
   * Fix usage of stripped keys
-  * SHA256 as default for compatibility
-  * Intent API has changed, see https://github.com/open-keychain/open-keychain/wiki/Intent-API
-  * OpenPGP API now handles revoked/expired keys and returns all user ids
+  * SHA256 berezkoa bezala bateragarritasunagaitik
+  * Intent API aldatu egin da, ikusi https://github.com/open-keychain/open-keychain/wiki/Intent-API
+  * OpenPGP API-k orain ukatutako/iraungitutako giltzak kudeatzen ditu eta erabiltzaile id guztiak itzultzen ditu
 
 
 ## 2.9
 
-  * Fixing crashes introduced in v2.8
-  * Experimental ECC support
-  * Experimental YubiKey support: Only signing with imported keys
+  * v2.8-ko matxurak zuzentzen
+  * ECC sostengu esperimentala
+  * YubiKey sostengu esperimentala: Sinadura inportatutako giltzekin bakarrik
 
 
 ## 2.8
 
-  * So many bugs have been fixed in this release that we focus on the main new features
-  * Key edit: awesome new design, key revocation
-  * Key import: awesome new design, secure keyserver connections via hkps, keyserver resolving via DNS SRV records
-  * New first time screen
-  * New key creation screen: autocompletion of name and email based on your personal Android accounts
-  * File encryption: awesome new design, support for encrypting multiple files
-  * New icons to show status of key (by Brennan Novak)
-  * Important bug fix: Importing of large key collections from a file is now possible
-  * Notification showing cached passphrases
-  * Keys are connected to Android's contacts
+  * Akats asko zuzendu dira ezaugarri berri nagusietan foku garen argitalpen honetan.
+  * Giltza edizioa: diseinu berri zoragarria, giltza ukapena
+  * Giltza inportazioa: diseinu berri zoragarria, giltz-zerbitzari elkarketa segurua hkps bidez, giltza-zerbitzari ebazpena DNS SRV erregistroen bidez
+  * Lehen aldia ikusleiho berria
+  * Giltza sortze ikusleiho berrria: izenaren eta postaren berez-osaketa zure Android-eko kontu pertsonaletan ohinarrituta
+  * Agiri enkriptaketa: diseinu berri zoragarria, agiri ugari enkriptazeko sostengua
+  * Ikur berriak giltzaren egoera erakusteko (Brennan Novak-ek egina)
+  * Akats zuzenketa garrantzitsua: Giltza bilduma handiak inportatzea agiri batetik orain ahal da
+  * Jakinarazpenak katxeatutako sar-esaldiak erakusten ditu
+  * Giltzak Android-ren harremanetara elkartuta daude
 
-This release wouldn't be possible without the work of Vincent Breitmoser (GSoC 2014), mar-v-in (GSoC 2014), Daniel Albert, Art O Cathain, Daniel Haß, Tim Bray, Thialfihar
+Argitalpen hau ezinezkoa litzake Breitmoser (GSoC 2014), mar-v-in (GSoC 2014), Daniel Albert, Art O Cathain, Daniel Haß, Tim Bray eta Thialfihar-ren lanik gabe
 
 ## 2.7
 
   * Purple! (Dominik, Vincent)
-  * New key view design (Dominik, Vincent)
-  * New flat Android buttons (Dominik, Vincent)
-  * API fixes (Dominik)
-  * Keybase.io import (Tim Bray)
+  * Giltza ikuspegi diseinu berria (Dominik, Vincent)
+  * Android botoi lau berriak (Dominik, Vincent)
+  * API zuzenketak (Dominik)
+  * Keybase.io inportazioa (Tim Bray)
 
 
 ## 2.6.1
 
-  * Some fixes for regression bugs
+  * Zenbait zuzenketa akats zaharrentzat
 
 
 ## 2.6
 
-  * Key certifications (thanks to Vincent Breitmoser)
-  * Support for GnuPG partial secret keys (thanks to Vincent Breitmoser)
-  * New design for signature verification
-  * Custom key length (thanks to Greg Witczak)
-  * Fix share-functionality from other apps
+  * Giltza egiaztagiritzeak (Vincent Breitmoser-ri esker)
+  * GnuPG giltza sekretu partzialentzako sostengua (Vincent Breitmoser-ri esker)
+  * Diseinu berria sinadura egiaztapenerako
+  * Norbere giltza luzera (Greg Witczak-ri esker)
+  * Zuzenduta elkarbanatze-eginkizuna beste aplikazio batzuetatik
 
 
 ## 2.5
 
-  * Fix decryption of symmetric OpenPGP messages/files
-  * Refactored key edit screen (thanks to Ash Hughes)
-  * New modern design for encrypt/decrypt screens
-  * OpenPGP API version 3 (multiple api accounts, internal fixes, key lookup)
+  * Zuzenduta OpenPGP mezu/agiri simetrikoen dekriptaketa
+  * Berreginda giltza edizio ikusleihoa (Ash Hughes-ri esker)
+  * Diseinu moderno berria enkriptaketa/dekriptaketa ikusleihoentzat
+  * OpenPGP API bertsioa 3 (api kontu ugari, barneko zuzenketak, giltza bilaketa)
 
 
 ## 2.4

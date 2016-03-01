@@ -1,14 +1,10 @@
-[submodule "extern/spongycastle"]
-	path = extern/spongycastle
-	url = https://github.com/open-keychain/spongycastle.git
-	ignore = dirty
 [submodule "extern/openpgp-api-lib"]
 	path = extern/openpgp-api-lib
-	url = https://github.com/open-keychain/openpgp-api-lib.git
+	url = https://github.com/open-keychain/openpgp-api.git
 	ignore = dirty
 [submodule "extern/openkeychain-api-lib"]
 	path = extern/openkeychain-api-lib
-	url = https://github.com/open-keychain/openkeychain-api-lib.git
+	url = https://github.com/open-keychain/openkeychain-intents.git
 	ignore = dirty
 [submodule "extern/KeybaseLib"]
 	path = extern/KeybaseLib
@@ -21,4 +17,12 @@
 [submodule "extern/safeslinger-exchange"]
 	path = extern/safeslinger-exchange
 	url = https://github.com/open-keychain/exchange-android
+	ignore = dirty
+[submodule "OpenKeychain/src/test/resources/openpgp-interop"]
+	path = OpenKeychain/src/test/resources/openpgp-interop
+	url = https://github.com/google/openpgp-interop
+	ignore = dirty
+[submodule "extern/bouncycastle"]
+	path = extern/bouncycastle
+	url = https://github.com/open-keychain/bouncycastle.git
 	ignore = dirty

@@ -21,9 +21,9 @@ package org.sufficientlysecure.keychain.ui.adapter;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.Date;
 
 import android.content.Context;
 import android.database.Cursor;
@@ -32,6 +32,7 @@ import android.support.v4.widget.CursorAdapter;
 import android.text.format.DateUtils;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.View.OnClickListener;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -43,6 +44,7 @@ import org.sufficientlysecure.keychain.pgp.CanonicalizedPublicKeyRing;
 import org.sufficientlysecure.keychain.pgp.KeyRing;
 import org.sufficientlysecure.keychain.provider.KeychainContract.KeyRings;
 import org.sufficientlysecure.keychain.ui.util.Highlighter;
+import org.sufficientlysecure.keychain.ui.util.FormattingUtils;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils.State;
 
@@ -50,6 +52,7 @@ public class KeyAdapter extends CursorAdapter {
 
     protected String mQuery;
     protected LayoutInflater mInflater;
+    protected Context mContext;
 
     // These are the rows that we will retrieve.
     public static final String[] PROJECTION = new String[]{
@@ -78,6 +81,7 @@ public class KeyAdapter extends CursorAdapter {
     public KeyAdapter(Context context, Cursor c, int flags) {
         super(context, c, flags);
 
+        mContext = context;
         mInflater = LayoutInflater.from(context);
     }
 
@@ -87,6 +91,8 @@ public class KeyAdapter extends CursorAdapter {
 
     public static class KeyItemViewHolder {
         public View mView;
+        public View mLayoutDummy;
+        public View mLayoutData;
         public Long mMasterKeyId;
         public TextView mMainUserId;
         public TextView mMainUserIdRest;
@@ -99,6 +105,8 @@ public class KeyAdapter extends CursorAdapter {
 
         public KeyItemViewHolder(View view) {
             mView = view;
+            mLayoutData = view.findViewById(R.id.key_list_item_data);
+            mLayoutDummy = view.findViewById(R.id.key_list_item_dummy);
             mMainUserId = (TextView) view.findViewById(R.id.key_list_item_name);
             mMainUserIdRest = (TextView) view.findViewById(R.id.key_list_item_email);
             mStatus = (ImageView) view.findViewById(R.id.key_list_item_status_icon);
@@ -107,7 +115,10 @@ public class KeyAdapter extends CursorAdapter {
             mCreationDate = (TextView) view.findViewById(R.id.key_list_item_creation);
         }
 
-        public void setData(Context context, KeyItem item, Highlighter highlighter) {
+        public void setData(Context context, KeyItem item, Highlighter highlighter, boolean enabled) {
+
+            mLayoutData.setVisibility(View.VISIBLE);
+            mLayoutDummy.setVisibility(View.GONE);
 
             mDisplayedItem = item;
 
@@ -126,36 +137,39 @@ public class KeyAdapter extends CursorAdapter {
                 }
             }
 
+            // sort of a hack: if this item isn't enabled, we make it clickable
+            // to intercept its click events. either way, no listener!
+            mView.setClickable(!enabled);
+
             { // set edit button and status, specific by key type
 
                 mMasterKeyId = item.mKeyId;
 
+                int textColor;
+
                 // Note: order is important!
                 if (item.mIsRevoked) {
                     KeyFormattingUtils
-                            .setStatusImage(context, mStatus, null, State.REVOKED, R.color.bg_gray);
+                            .setStatusImage(context, mStatus, null, State.REVOKED, R.color.key_flag_gray);
                     mStatus.setVisibility(View.VISIBLE);
                     mSlinger.setVisibility(View.GONE);
-                    mMainUserId.setTextColor(context.getResources().getColor(R.color.bg_gray));
-                    mMainUserIdRest.setTextColor(context.getResources().getColor(R.color.bg_gray));
+                    textColor = context.getResources().getColor(R.color.key_flag_gray);
                 } else if (item.mIsExpired) {
-                    KeyFormattingUtils.setStatusImage(context, mStatus, null, State.EXPIRED, R.color.bg_gray);
+                    KeyFormattingUtils.setStatusImage(context, mStatus, null, State.EXPIRED, R.color.key_flag_gray);
                     mStatus.setVisibility(View.VISIBLE);
                     mSlinger.setVisibility(View.GONE);
-                    mMainUserId.setTextColor(context.getResources().getColor(R.color.bg_gray));
-                    mMainUserIdRest.setTextColor(context.getResources().getColor(R.color.bg_gray));
+                    textColor = context.getResources().getColor(R.color.key_flag_gray);
                 } else if (item.mIsSecret) {
                     mStatus.setVisibility(View.GONE);
                     if (mSlingerButton.hasOnClickListeners()) {
                         mSlingerButton.setColorFilter(
-                                context.getResources().getColor(R.color.tertiary_text_light),
+                                FormattingUtils.getColorFromAttr(context, R.attr.colorTertiaryText),
                                 PorterDuff.Mode.SRC_IN);
                         mSlinger.setVisibility(View.VISIBLE);
                     } else {
                         mSlinger.setVisibility(View.GONE);
                     }
-                    mMainUserId.setTextColor(context.getResources().getColor(R.color.black));
-                    mMainUserIdRest.setTextColor(context.getResources().getColor(R.color.black));
+                    textColor = FormattingUtils.getColorFromAttr(context, R.attr.colorText);
                 } else {
                     // this is a public key - show if it's verified
                     if (item.mIsVerified) {
@@ -166,25 +180,46 @@ public class KeyAdapter extends CursorAdapter {
                         mStatus.setVisibility(View.VISIBLE);
                     }
                     mSlinger.setVisibility(View.GONE);
-                    mMainUserId.setTextColor(context.getResources().getColor(R.color.black));
-                    mMainUserIdRest.setTextColor(context.getResources().getColor(R.color.black));
+                    textColor = FormattingUtils.getColorFromAttr(context, R.attr.colorText);
                 }
+
+                if (!enabled) {
+                    textColor = context.getResources().getColor(R.color.key_flag_gray);
+                }
+
+                mMainUserId.setTextColor(textColor);
+                mMainUserIdRest.setTextColor(textColor);
 
                 if (item.mHasDuplicate) {
                     String dateTime = DateUtils.formatDateTime(context,
                             item.mCreation.getTime(),
                             DateUtils.FORMAT_SHOW_DATE
+                                    | DateUtils.FORMAT_SHOW_TIME
                                     | DateUtils.FORMAT_SHOW_YEAR
                                     | DateUtils.FORMAT_ABBREV_MONTH);
-
                     mCreationDate.setText(context.getString(R.string.label_key_created,
                             dateTime));
+                    mCreationDate.setTextColor(textColor);
                     mCreationDate.setVisibility(View.VISIBLE);
                 } else {
                     mCreationDate.setVisibility(View.GONE);
                 }
 
             }
+
+        }
+
+        /** Shows the "you have no keys yet" dummy view, and sets an OnClickListener. */
+        public void setDummy(OnClickListener listener) {
+
+            // just reset everything to display the dummy layout
+            mLayoutDummy.setVisibility(View.VISIBLE);
+            mLayoutData.setVisibility(View.GONE);
+            mSlinger.setVisibility(View.GONE);
+            mStatus.setVisibility(View.GONE);
+            mView.setClickable(false);
+
+            mLayoutDummy.setOnClickListener(listener);
 
         }
 
@@ -205,9 +240,11 @@ public class KeyAdapter extends CursorAdapter {
     @Override
     public void bindView(View view, Context context, Cursor cursor) {
         Highlighter highlighter = new Highlighter(context, mQuery);
-        KeyItemViewHolder h = (KeyItemViewHolder) view.getTag();
         KeyItem item = new KeyItem(cursor);
-        h.setData(context, item, highlighter);
+        boolean isEnabled = isEnabled(cursor);
+
+        KeyItemViewHolder h = (KeyItemViewHolder) view.getTag();
+        h.setData(context, item, highlighter, isEnabled);
     }
 
     public boolean isSecretAvailable(int id) {
@@ -295,6 +332,13 @@ public class KeyAdapter extends CursorAdapter {
             } else {
                 return mUserId.email;
             }
+        }
+
+        // TODO: workaround for bug in TokenAutoComplete,
+        // see https://github.com/open-keychain/open-keychain/issues/1636
+        @Override
+        public String toString() {
+            return " ";
         }
 
     }

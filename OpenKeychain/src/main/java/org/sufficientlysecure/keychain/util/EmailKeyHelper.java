@@ -27,6 +27,7 @@ import org.sufficientlysecure.keychain.operations.results.ImportKeyResult;
 import org.sufficientlysecure.keychain.service.ImportKeyringParcel;
 import org.sufficientlysecure.keychain.ui.base.CryptoOperationHelper;
 
+import java.net.Proxy;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -34,6 +35,7 @@ import java.util.Locale;
 import java.util.Set;
 
 public class EmailKeyHelper {
+    // TODO: Make this not require a proxy in it's constructor, redesign when it is to be used
     // to import keys, simply use CryptoOperationHelper with this callback
     public abstract class ImportContactKeysCallback
             implements CryptoOperationHelper.Callback<ImportKeyringParcel, ImportKeyResult> {
@@ -41,20 +43,21 @@ public class EmailKeyHelper {
         private ArrayList<ParcelableKeyRing> mKeyList;
         private String mKeyserver;
 
-        public ImportContactKeysCallback(Context context, String keyserver) {
-            this(context, ContactHelper.getContactMails(context), keyserver);
+        public ImportContactKeysCallback(Context context, String keyserver, Proxy proxy) {
+            this(context, new ContactHelper(context).getContactMails(), keyserver, proxy);
         }
 
-        public ImportContactKeysCallback(Context context, List<String> mails, String keyserver) {
+        public ImportContactKeysCallback(Context context, List<String> mails, String keyserver,
+                                         Proxy proxy) {
             Set<ImportKeysListEntry> entries = new HashSet<>();
             for (String mail : mails) {
-                entries.addAll(getEmailKeys(context, mail));
+                entries.addAll(getEmailKeys(context, mail, proxy));
             }
 
             // Put them in a list and import
             ArrayList<ParcelableKeyRing> keys = new ArrayList<>(entries.size());
             for (ImportKeysListEntry entry : entries) {
-                keys.add(new ParcelableKeyRing(entry.getFingerprintHex(), entry.getKeyIdHex(), null));
+                keys.add(new ParcelableKeyRing(entry.getFingerprintHex(), entry.getKeyIdHex()));
             }
             mKeyList = keys;
             mKeyserver = keyserver;
@@ -65,13 +68,13 @@ public class EmailKeyHelper {
         }
     }
 
-    public static Set<ImportKeysListEntry> getEmailKeys(Context context, String mail) {
+    public static Set<ImportKeysListEntry> getEmailKeys(Context context, String mail, Proxy proxy) {
         Set<ImportKeysListEntry> keys = new HashSet<>();
 
         // Try _hkp._tcp SRV record first
         String[] mailparts = mail.split("@");
         if (mailparts.length == 2) {
-            HkpKeyserver hkp = HkpKeyserver.resolve(mailparts[1]);
+            HkpKeyserver hkp = HkpKeyserver.resolve(mailparts[1], proxy);
             if (hkp != null) {
                 keys.addAll(getEmailKeys(mail, hkp));
             }
@@ -81,7 +84,7 @@ public class EmailKeyHelper {
             // Most users don't have the SRV record, so ask a default server as well
             String server = Preferences.getPreferences(context).getPreferredKeyserver();
             if (server != null) {
-                HkpKeyserver hkp = new HkpKeyserver(server);
+                HkpKeyserver hkp = new HkpKeyserver(server, proxy);
                 keys.addAll(getEmailKeys(mail, hkp));
             }
         }
@@ -99,8 +102,7 @@ public class EmailKeyHelper {
                     }
                 }
             }
-        } catch (Keyserver.QueryFailedException ignored) {
-        } catch (Keyserver.QueryNeedsRepairException ignored) {
+        } catch (Keyserver.CloudSearchFailureException ignored) {
         }
         return new ArrayList<>(keys);
     }

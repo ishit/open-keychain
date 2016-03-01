@@ -155,7 +155,7 @@ public class SettingsKeyserverFragment extends Fragment implements RecyclerItemC
                                 data.getBoolean(AddEditKeyserverDialogFragment.MESSAGE_VERIFIED);
                         if (verified) {
                             Notify.create(getActivity(),
-                                    R.string.add_keyserver_verified, Notify.Style.OK).show();
+                                    R.string.add_keyserver_connection_verified, Notify.Style.OK).show();
                         } else {
                             Notify.create(getActivity(),
                                     R.string.add_keyserver_without_verification,
@@ -174,26 +174,6 @@ public class SettingsKeyserverFragment extends Fragment implements RecyclerItemC
                             case EDIT:
                                 editKeyserver(keyserver, position);
                                 break;
-                        }
-                        break;
-                    }
-                    case AddEditKeyserverDialogFragment.MESSAGE_VERIFICATION_FAILED: {
-                        AddEditKeyserverDialogFragment.FailureReason failureReason =
-                                (AddEditKeyserverDialogFragment.FailureReason) data.getSerializable(
-                                        AddEditKeyserverDialogFragment.MESSAGE_FAILURE_REASON);
-                        switch (failureReason) {
-                            case CONNECTION_FAILED: {
-                                Notify.create(getActivity(),
-                                        R.string.add_keyserver_connection_failed,
-                                        Notify.Style.ERROR).show();
-                                break;
-                            }
-                            case INVALID_URL: {
-                                Notify.create(getActivity(),
-                                        R.string.add_keyserver_invalid_url,
-                                        Notify.Style.ERROR).show();
-                                break;
-                            }
                         }
                         break;
                     }
@@ -250,9 +230,6 @@ public class SettingsKeyserverFragment extends Fragment implements RecyclerItemC
     public class KeyserverListAdapter extends RecyclerView.Adapter<KeyserverListAdapter.ViewHolder>
             implements ItemTouchHelperAdapter {
 
-        // to update the ViewHolder associated with first item, for when an item is deleted
-        private ViewHolder mFirstItem;
-
         private final List<String> mKeyservers;
 
         public KeyserverListAdapter(List<String> keyservers) {
@@ -263,15 +240,11 @@ public class SettingsKeyserverFragment extends Fragment implements RecyclerItemC
         public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
             View view = LayoutInflater.from(parent.getContext())
                     .inflate(R.layout.settings_keyserver_item, parent, false);
-            ViewHolder viewHolder = new ViewHolder(view);
-            return viewHolder;
+            return new ViewHolder(view);
         }
 
         @Override
         public void onBindViewHolder(final ViewHolder holder, int position) {
-            if (position == 0) {
-                mFirstItem = holder;
-            }
             holder.keyserverUrl.setText(mKeyservers.get(position));
 
             // Start a drag whenever the handle view it touched

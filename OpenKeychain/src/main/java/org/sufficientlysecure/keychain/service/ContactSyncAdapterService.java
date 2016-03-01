@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Dominik Schürmann <dominik@dominikschuermann.de>
+ * Copyright (C) 2014-2015 Dominik Schürmann <dominik@dominikschuermann.de>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,22 +17,35 @@
 
 package org.sufficientlysecure.keychain.service;
 
+import android.Manifest;
 import android.accounts.Account;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.AbstractThreadedSyncAdapter;
 import android.content.ContentProviderClient;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SyncResult;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.preference.PreferenceActivity;
 import android.provider.ContactsContract;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.NotificationManagerCompat;
+import android.support.v4.content.ContextCompat;
 
 import org.sufficientlysecure.keychain.Constants;
+import org.sufficientlysecure.keychain.KeychainApplication;
+import org.sufficientlysecure.keychain.R;
+import org.sufficientlysecure.keychain.ui.SettingsActivity;
 import org.sufficientlysecure.keychain.util.ContactHelper;
 import org.sufficientlysecure.keychain.util.Log;
 
 public class ContactSyncAdapterService extends Service {
+
+    private static final int NOTIFICATION_ID_SYNC_SETTINGS = 13;
 
     private class ContactSyncAdapter extends AbstractThreadedSyncAdapter {
 
@@ -45,8 +58,46 @@ public class ContactSyncAdapterService extends Service {
         @Override
         public void onPerformSync(Account account, Bundle extras, String authority, ContentProviderClient provider,
                                   final SyncResult syncResult) {
-            Log.d(Constants.TAG, "Performing a sync!");
-            // TODO: Import is currently disabled for 2.8, until we implement proper origin management
+            Log.d(Constants.TAG, "Performing a contact sync!");
+
+            new ContactHelper(ContactSyncAdapterService.this).writeKeysToContacts();
+
+            importKeys();
+        }
+
+        @Override
+        public void onSecurityException(Account account, Bundle extras, String authority, SyncResult syncResult) {
+            super.onSecurityException(account, extras, authority, syncResult);
+
+            // deactivate sync
+            ContentResolver.setSyncAutomatically(account, authority, false);
+
+            // show notification linking to sync settings
+            Intent resultIntent = new Intent(ContactSyncAdapterService.this, SettingsActivity.class);
+            resultIntent.putExtra(PreferenceActivity.EXTRA_SHOW_FRAGMENT,
+                    SettingsActivity.SyncPrefsFragment.class.getName());
+            PendingIntent resultPendingIntent =
+                    PendingIntent.getActivity(
+                            ContactSyncAdapterService.this,
+                            0,
+                            resultIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT
+                    );
+            NotificationCompat.Builder mBuilder =
+                    new NotificationCompat.Builder(ContactSyncAdapterService.this)
+                            .setAutoCancel(true)
+                            .setSmallIcon(R.drawable.ic_stat_notify_24dp)
+                            .setColor(getResources().getColor(R.color.primary))
+                            .setContentTitle(getString(R.string.sync_notification_permission_required_title))
+                            .setContentText(getString(R.string.sync_notification_permission_required_text))
+                            .setContentIntent(resultPendingIntent);
+            NotificationManagerCompat.from(ContactSyncAdapterService.this)
+                    .notify(NOTIFICATION_ID_SYNC_SETTINGS, mBuilder.build());
+        }
+    }
+
+    private static void importKeys() {
+        // TODO: Import is currently disabled, until we implement proper origin management
 //            importDone.set(false);
 //            KeychainApplication.setupAccountAsNeeded(ContactSyncAdapterService.this);
 //            EmailKeyHelper.importContacts(getContext(), new Messenger(new Handler(Looper.getMainLooper(),
@@ -84,22 +135,48 @@ public class ContactSyncAdapterService extends Service {
 //                    return;
 //                }
 //            }
-            ContactHelper.writeKeysToContacts(ContactSyncAdapterService.this);
-        }
     }
 
-    public static void requestSync() {
+    @Override
+    public IBinder onBind(Intent intent) {
+        return new ContactSyncAdapter().getSyncAdapterBinder();
+    }
+
+    public static void requestContactsSync() {
         Bundle extras = new Bundle();
-        // no need to wait for internet connection!
+        // no need to wait, do it immediately
         extras.putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL, true);
+        extras.putBoolean(ContentResolver.SYNC_EXTRAS_EXPEDITED, true);
         ContentResolver.requestSync(
                 new Account(Constants.ACCOUNT_NAME, Constants.ACCOUNT_TYPE),
                 ContactsContract.AUTHORITY,
                 extras);
     }
 
-    @Override
-    public IBinder onBind(Intent intent) {
-        return new ContactSyncAdapter().getSyncAdapterBinder();
+    public static void enableContactsSync(Context context) {
+        Account account = KeychainApplication.createAccountIfNecessary(context);
+        if (account == null) {
+            return;
+        }
+
+        ContentResolver.setIsSyncable(account, ContactsContract.AUTHORITY, 1);
+        ContentResolver.setSyncAutomatically(account, ContactsContract.AUTHORITY, true);
+    }
+
+    public static void deleteIfSyncDisabled(Context context) {
+        if (!(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS)
+                == PackageManager.PERMISSION_GRANTED)) {
+            return;
+        }
+
+        Account account = KeychainApplication.createAccountIfNecessary(context);
+        if (account == null) {
+            return;
+        }
+
+        // if user has disabled automatic sync, delete linked OpenKeychain contacts
+        if (!ContentResolver.getSyncAutomatically(account, ContactsContract.AUTHORITY)) {
+            new ContactHelper(context).deleteAllContacts();
+        }
     }
 }

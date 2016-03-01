@@ -1,3 +1,5 @@
+apply plugin: 'com.github.ben-manes.versions'
+
 buildscript {
     repositories {
         jcenter()
@@ -5,13 +7,16 @@ buildscript {
 
     dependencies {
         // NOTE: Always use fixed version codes not dynamic ones, e.g. 0.7.3 instead of 0.7.+, see README for more information
-        classpath 'com.android.tools.build:gradle:1.2.3'
+        classpath 'com.android.tools.build:gradle:1.5.0'
         classpath files('gradle-witness.jar')
         // bintray dependency to satisfy dependency of openpgp-api lib
         classpath 'com.novoda:bintray-release:0.2.7'
         
-        classpath 'org.kt3k.gradle.plugin:coveralls-gradle-plugin:2.0.1'
+        classpath 'org.kt3k.gradle.plugin:coveralls-gradle-plugin:2.4.0'
         // classpath 'com.stanfy.spoon:spoon-gradle-plugin:1.0.2'
+
+        // allows to check for lib updates with "gradle dependencyUpdates -Drevision=release"
+        classpath 'com.github.ben-manes:gradle-versions-plugin:0.11.3'
     }
 }
 
@@ -22,7 +27,7 @@ allprojects {
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '2.4'
+    gradleVersion = '2.5'
 }
 
 subprojects {
@@ -31,8 +36,8 @@ subprojects {
     }
 }
 
-// Ignore tests for external spongycastle
-project(':extern:spongycastle') {
+// Ignore tests for external bouncycastle
+project(':extern:bouncycastle') {
     subprojects {
         // Need to re-apply the plugin here otherwise the test property below can't be set.
         apply plugin: 'java'
@@ -43,6 +48,6 @@ project(':extern:spongycastle') {
 // SDK Version and Build Tools used by all subprojects
 // See http://tools.android.com/tech-docs/new-build-system/tips#TOC-Controlling-Android-properties-of-all-your-modules-from-the-main-project.
 ext {
-    compileSdkVersion = 22
-    buildToolsVersion = '22.0.1'
+    compileSdkVersion = 23
+    buildToolsVersion = '23.0.1'
 }

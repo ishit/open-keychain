@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2014 Dominik Schürmann <dominik@dominikschuermann.de>
+ * Copyright (C) 2013-2015 Dominik Schürmann <dominik@dominikschuermann.de>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@ package org.sufficientlysecure.keychain.util;
 
 import android.content.res.AssetManager;
 
+import com.squareup.okhttp.OkHttpClient;
+
 import org.sufficientlysecure.keychain.Constants;
 
 import java.io.ByteArrayInputStream;
@@ -26,7 +28,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
-import java.net.URLConnection;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -37,7 +38,6 @@ import java.security.cert.CertificateFactory;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -49,51 +49,67 @@ public class TlsHelper {
         }
     }
 
-    private static Map<String, byte[]> sStaticCA = new HashMap<>();
+    private static Map<String, byte[]> sPinnedCertificates = new HashMap<>();
 
-    public static void addStaticCA(String domain, byte[] certificate) {
-        sStaticCA.put(domain, certificate);
-    }
-
-    public static void addStaticCA(String domain, AssetManager assetManager, String name) {
+    /**
+     * Add certificate from assets to pinned certificate map.
+     */
+    public static void addPinnedCertificate(String host, AssetManager assetManager, String cerFilename) {
         try {
-            InputStream is = assetManager.open(name);
+            InputStream is = assetManager.open(cerFilename);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             int reads = is.read();
 
-            while(reads != -1){
+            while (reads != -1) {
                 baos.write(reads);
                 reads = is.read();
             }
 
             is.close();
 
-            addStaticCA(domain, baos.toByteArray());
+            sPinnedCertificates.put(host, baos.toByteArray());
         } catch (IOException e) {
             Log.w(Constants.TAG, e);
         }
     }
 
-    public static URLConnection openConnection(URL url) throws IOException, TlsHelperException {
+    /**
+     * Use pinned certificate for OkHttpClient if we have one.
+     *
+     * @return true, if certificate is available, false if not
+     * @throws TlsHelperException
+     * @throws IOException
+     */
+    public static boolean usePinnedCertificateIfAvailable(OkHttpClient client, URL url) throws TlsHelperException, IOException {
         if (url.getProtocol().equals("https")) {
-            for (String domain : sStaticCA.keySet()) {
-                if (url.getHost().endsWith(domain)) {
-                    return openCAConnection(sStaticCA.get(domain), url);
+            // use certificate PIN from assets if we have one
+            for (String host : sPinnedCertificates.keySet()) {
+                if (url.getHost().endsWith(host)) {
+                    pinCertificate(sPinnedCertificates.get(host), client);
+                    return true;
                 }
             }
         }
-        return url.openConnection();
+        return false;
     }
 
     /**
-     * Opens a Connection that will only accept certificates signed with a specific CA and skips common name check.
-     * This is required for some distributed Keyserver networks like sks-keyservers.net
+     * Modifies the client to accept only requests with a given certificate. Applies to all URLs requested by the
+     * client.
+     * Therefore a client that is pinned this way should be used to only make requests to URLs with passed certificate.
      *
-     * @param certificate The X.509 certificate used to sign the servers certificate
-     * @param url         Connection target
+     * @param certificate certificate to pin
+     * @param client      OkHttpClient to enforce pinning on
+     * @throws TlsHelperException
+     * @throws IOException
      */
-    public static HttpsURLConnection openCAConnection(byte[] certificate, URL url)
+    private static void pinCertificate(byte[] certificate, OkHttpClient client)
             throws TlsHelperException, IOException {
+        // We don't use OkHttp's CertificatePinner since it can not be used to pin self-signed
+        // certificate if such certificate is not accepted by TrustManager.
+        // (Refer to note at end of description:
+        // http://square.github.io/okhttp/javadoc/com/squareup/okhttp/CertificatePinner.html )
+        // Creating our own TrustManager that trusts only our certificate eliminates the need for certificate pinning
         try {
             // Load CA
             CertificateFactory cf = CertificateFactory.getInstance("X.509");
@@ -114,13 +130,10 @@ public class TlsHelper {
             SSLContext context = SSLContext.getInstance("TLS");
             context.init(null, tmf.getTrustManagers(), null);
 
-            // Tell the URLConnection to use a SocketFactory from our SSLContext
-            HttpsURLConnection urlConnection = (HttpsURLConnection) url.openConnection();
-            urlConnection.setSSLSocketFactory(context.getSocketFactory());
-
-            return urlConnection;
-        } catch (CertificateException | KeyManagementException | KeyStoreException | NoSuchAlgorithmException e) {
+            client.setSslSocketFactory(context.getSocketFactory());
+        } catch (CertificateException | KeyStoreException | KeyManagementException | NoSuchAlgorithmException e) {
             throw new TlsHelperException(e);
         }
     }
+
 }

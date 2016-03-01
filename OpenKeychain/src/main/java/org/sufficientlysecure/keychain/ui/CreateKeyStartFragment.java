@@ -38,7 +38,7 @@ public class CreateKeyStartFragment extends Fragment {
 
     View mCreateKey;
     View mImportKey;
-    View mYubiKey;
+    View mSecurityToken;
     TextView mSkipOrCancel;
     public static final int REQUEST_CODE_IMPORT_KEY = 0x00007012;
 
@@ -61,7 +61,7 @@ public class CreateKeyStartFragment extends Fragment {
 
         mCreateKey = view.findViewById(R.id.create_key_create_key_button);
         mImportKey = view.findViewById(R.id.create_key_import_button);
-        mYubiKey = view.findViewById(R.id.create_key_yubikey_button);
+        mSecurityToken = view.findViewById(R.id.create_key_security_token_button);
         mSkipOrCancel = (TextView) view.findViewById(R.id.create_key_cancel);
 
         if (mCreateKeyActivity.mFirstTime) {
@@ -78,10 +78,10 @@ public class CreateKeyStartFragment extends Fragment {
             }
         });
 
-        mYubiKey.setOnClickListener(new View.OnClickListener() {
+        mSecurityToken.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                CreateYubiKeyWaitFragment frag = new CreateYubiKeyWaitFragment();
+                CreateSecurityTokenWaitFragment frag = new CreateSecurityTokenWaitFragment();
                 mCreateKeyActivity.loadFragment(frag, FragAction.TO_RIGHT);
             }
         });
@@ -98,17 +98,10 @@ public class CreateKeyStartFragment extends Fragment {
         mSkipOrCancel.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (mCreateKeyActivity.mFirstTime) {
-                    Preferences prefs = Preferences.getPreferences(mCreateKeyActivity);
-                    prefs.setFirstTime(false);
-                    Intent intent = new Intent(mCreateKeyActivity, MainActivity.class);
-                    startActivity(intent);
-                    mCreateKeyActivity.finish();
-                } else {
-                    // just finish activity and return data
+                if (!mCreateKeyActivity.mFirstTime) {
                     mCreateKeyActivity.setResult(Activity.RESULT_CANCELED);
-                    mCreateKeyActivity.finish();
                 }
+                mCreateKeyActivity.finish();
             }
         });
 
@@ -124,9 +117,6 @@ public class CreateKeyStartFragment extends Fragment {
                 if (mCreateKeyActivity.mFirstTime) {
                     Preferences prefs = Preferences.getPreferences(mCreateKeyActivity);
                     prefs.setFirstTime(false);
-                    Intent intent = new Intent(mCreateKeyActivity, MainActivity.class);
-                    intent.putExtras(data);
-                    startActivity(intent);
                     mCreateKeyActivity.finish();
                 } else {
                     // just finish activity and return data

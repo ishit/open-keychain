@@ -18,19 +18,20 @@
 
 package org.sufficientlysecure.keychain.pgp;
 
-import org.spongycastle.bcpg.SignatureSubpacket;
-import org.spongycastle.bcpg.SignatureSubpacketTags;
-import org.spongycastle.bcpg.sig.Exportable;
-import org.spongycastle.bcpg.sig.NotationData;
-import org.spongycastle.bcpg.sig.Revocable;
-import org.spongycastle.bcpg.sig.RevocationReason;
-import org.spongycastle.openpgp.PGPException;
-import org.spongycastle.openpgp.PGPObjectFactory;
-import org.spongycastle.openpgp.PGPPublicKey;
-import org.spongycastle.openpgp.PGPSignature;
-import org.spongycastle.openpgp.PGPSignatureList;
-import org.spongycastle.openpgp.PGPUserAttributeSubpacketVector;
-import org.spongycastle.openpgp.operator.jcajce.JcaPGPContentVerifierBuilderProvider;
+import org.bouncycastle.bcpg.SignatureSubpacket;
+import org.bouncycastle.bcpg.SignatureSubpacketTags;
+import org.bouncycastle.bcpg.sig.Exportable;
+import org.bouncycastle.bcpg.sig.NotationData;
+import org.bouncycastle.bcpg.sig.Revocable;
+import org.bouncycastle.bcpg.sig.RevocationReason;
+import org.bouncycastle.openpgp.PGPException;
+import org.bouncycastle.openpgp.PGPObjectFactory;
+import org.bouncycastle.openpgp.PGPPublicKey;
+import org.bouncycastle.openpgp.PGPSignature;
+import org.bouncycastle.openpgp.PGPSignatureList;
+import org.bouncycastle.openpgp.PGPUserAttributeSubpacketVector;
+import org.bouncycastle.openpgp.operator.jcajce.JcaKeyFingerprintCalculator;
+import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentVerifierBuilderProvider;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.util.Log;
@@ -131,7 +132,7 @@ public class WrappedSignature {
                 SignatureSubpacketTags.REVOCATION_REASON);
         // For some reason, this is missing in SignatureSubpacketInputStream:146
         if (!(p instanceof RevocationReason)) {
-            p = new RevocationReason(false, p.getData());
+            p = new RevocationReason(false, false, p.getData());
         }
         return ((RevocationReason) p).getRevocationDescription();
     }
@@ -222,7 +223,7 @@ public class WrappedSignature {
     }
 
     public static WrappedSignature fromBytes(byte[] data) {
-        PGPObjectFactory factory = new PGPObjectFactory(data);
+        PGPObjectFactory factory = new PGPObjectFactory(data, new JcaKeyFingerprintCalculator());
         PGPSignatureList signatures = null;
         try {
             if ((signatures = (PGPSignatureList) factory.nextObject()) == null || signatures.isEmpty()) {

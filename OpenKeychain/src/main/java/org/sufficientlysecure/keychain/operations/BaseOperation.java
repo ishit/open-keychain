@@ -19,7 +19,10 @@ package org.sufficientlysecure.keychain.operations;
 
 import android.content.Context;
 import android.os.Parcelable;
+import android.support.annotation.NonNull;
+import android.support.annotation.StringRes;
 
+import org.sufficientlysecure.keychain.Constants.key;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.pgp.PassphraseCacheInterface;
 import org.sufficientlysecure.keychain.pgp.Progressable;
@@ -76,11 +79,10 @@ public abstract class BaseOperation <T extends Parcelable> implements Passphrase
         mCancelled = cancelled;
     }
 
-    public OperationResult execute(T input, CryptoInputParcel cryptoInput) {
-        return null;
-    }
+    @NonNull
+    public abstract OperationResult execute(T input, CryptoInputParcel cryptoInput);
 
-    public void updateProgress(int message, int current, int total) {
+    public void updateProgress(@StringRes int message, int current, int total) {
         if (mProgressable != null) {
             mProgressable.setProgress(message, current, total);
         }
@@ -111,8 +113,11 @@ public abstract class BaseOperation <T extends Parcelable> implements Passphrase
     @Override
     public Passphrase getCachedPassphrase(long subKeyId) throws NoSecretKeyException {
         try {
-            long masterKeyId = mProviderHelper.getMasterKeyId(subKeyId);
-            return getCachedPassphrase(masterKeyId, subKeyId);
+            if (subKeyId != key.symmetric) {
+                long masterKeyId = mProviderHelper.getMasterKeyId(subKeyId);
+                return getCachedPassphrase(masterKeyId, subKeyId);
+            }
+            return getCachedPassphrase(key.symmetric, key.symmetric);
         } catch (NotFoundException e) {
             throw new PassphraseCacheInterface.NoSecretKeyException();
         }

@@ -49,13 +49,17 @@ import org.sufficientlysecure.keychain.provider.KeychainDatabase.Tables;
 import org.sufficientlysecure.keychain.provider.ProviderHelper;
 import org.sufficientlysecure.keychain.service.CertifyActionsParcel;
 import org.sufficientlysecure.keychain.service.CertifyActionsParcel.CertifyAction;
+import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.ui.adapter.MultiUserIdsAdapter;
 import org.sufficientlysecure.keychain.ui.base.CachingCryptoOperationFragment;
 import org.sufficientlysecure.keychain.ui.util.Notify;
+import org.sufficientlysecure.keychain.ui.util.FormattingUtils;
 import org.sufficientlysecure.keychain.ui.widget.CertifyKeySpinner;
 import org.sufficientlysecure.keychain.util.Log;
+import org.sufficientlysecure.keychain.util.Preferences;
 
 import java.util.ArrayList;
+import java.util.Date;
 
 public class CertifyKeyFragment
         extends CachingCryptoOperationFragment<CertifyActionsParcel, CertifyResult>
@@ -79,7 +83,9 @@ public class CertifyKeyFragment
     };
     private static final int INDEX_MASTER_KEY_ID = 1;
     private static final int INDEX_USER_ID = 2;
+    @SuppressWarnings("unused")
     private static final int INDEX_IS_PRIMARY = 3;
+    @SuppressWarnings("unused")
     private static final int INDEX_IS_REVOKED = 4;
 
     private MultiUserIdsAdapter mUserIdsAdapter;
@@ -151,7 +157,7 @@ public class CertifyKeyFragment
         // make certify image gray, like action icons
         ImageView vActionCertifyImage =
                 (ImageView) view.findViewById(R.id.certify_key_action_certify_image);
-        vActionCertifyImage.setColorFilter(getResources().getColor(R.color.tertiary_text_light),
+        vActionCertifyImage.setColorFilter(FormattingUtils.getColorFromAttr(getActivity(), R.attr.colorTertiaryText),
                 PorterDuff.Mode.SRC_IN);
 
         View vCertifyButton = view.findViewById(R.id.certify_key_certify_button);
@@ -164,7 +170,7 @@ public class CertifyKeyFragment
                     Notify.create(getActivity(), getString(R.string.select_key_to_certify),
                             Notify.Style.ERROR).show();
                 } else {
-                    cryptoOperation();
+                    cryptoOperation(new CryptoInputParcel(new Date()));
                 }
             }
         });
@@ -311,6 +317,11 @@ public class CertifyKeyFragment
         CertifyActionsParcel actionsParcel = new CertifyActionsParcel(selectedKeyId);
         actionsParcel.mCertifyActions.addAll(certifyActions);
 
+        if (mUploadKeyCheckbox.isChecked()) {
+            actionsParcel.keyServerUri = Preferences.getPreferences(getActivity())
+                    .getPreferredKeyserver();
+        }
+
         // cached for next cryptoOperation loop
         cacheActionsParcel(actionsParcel);
 
@@ -318,16 +329,15 @@ public class CertifyKeyFragment
     }
 
     @Override
-    public void onCryptoOperationSuccess(CertifyResult result) {
+    public void onQueuedOperationSuccess(CertifyResult result) {
+        // protected by Queueing*Fragment
+        Activity activity = getActivity();
+
         Intent intent = new Intent();
         intent.putExtra(CertifyResult.EXTRA_RESULT, result);
-        getActivity().setResult(Activity.RESULT_OK, intent);
-        getActivity().finish();
-    }
+        activity.setResult(Activity.RESULT_OK, intent);
+        activity.finish();
 
-    @Override
-    public void onCryptoOperationCancelled() {
-        super.onCryptoOperationCancelled();
     }
 
 }

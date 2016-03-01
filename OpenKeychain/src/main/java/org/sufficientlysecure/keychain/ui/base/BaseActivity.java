@@ -18,6 +18,8 @@
 package org.sufficientlysecure.keychain.ui.base;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
@@ -29,6 +31,9 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import org.sufficientlysecure.keychain.R;
+import org.sufficientlysecure.keychain.service.ContactSyncAdapterService;
+import org.sufficientlysecure.keychain.service.KeyserverSyncAdapterService;
+import org.sufficientlysecure.keychain.ui.util.ThemeChanger;
 
 /**
  * Setups Toolbar
@@ -36,12 +41,34 @@ import org.sufficientlysecure.keychain.R;
 public abstract class BaseActivity extends AppCompatActivity {
     protected Toolbar mToolbar;
     protected View mStatusBar;
+    protected ThemeChanger mThemeChanger;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        initTheme();
         super.onCreate(savedInstanceState);
         initLayout();
         initToolbar();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        onResumeChecks(this);
+
+        if (mThemeChanger.changeTheme()) {
+            Intent intent = getIntent();
+            finish();
+            overridePendingTransition(0, 0);
+            startActivity(intent);
+            overridePendingTransition(0, 0);
+        }
+    }
+
+    public static void onResumeChecks(Context context) {
+        KeyserverSyncAdapterService.cancelUpdates(context);
+        // in case user has disabled sync from Android account settings
+        ContactSyncAdapterService.deleteIfSyncDisabled(context);
     }
 
     protected void initLayout() {
@@ -55,6 +82,15 @@ public abstract class BaseActivity extends AppCompatActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
         mStatusBar = findViewById(R.id.status_bar);
+    }
+
+    /**
+     * Override if you want a different theme!
+     */
+    protected void initTheme() {
+        mThemeChanger = new ThemeChanger(this);
+        mThemeChanger.setThemes(R.style.Theme_Keychain_Light, R.style.Theme_Keychain_Dark);
+        mThemeChanger.changeTheme();
     }
 
     protected void setActionBarIcon(int iconRes) {
@@ -87,9 +123,7 @@ public abstract class BaseActivity extends AppCompatActivity {
         mToolbar.setNavigationOnClickListener(cancelOnClickListener);
     }
 
-    /**
-     * Close button only
-     */
+    /** Close button only */
     protected void setFullScreenDialogClose(View.OnClickListener cancelOnClickListener, boolean white) {
         if (white) {
             setActionBarIcon(R.drawable.ic_close_white_24dp);
@@ -102,6 +136,17 @@ public abstract class BaseActivity extends AppCompatActivity {
 
     protected void setFullScreenDialogClose(View.OnClickListener cancelOnClickListener) {
         setFullScreenDialogClose(cancelOnClickListener, true);
+    }
+
+    /** Close button only, with finish-action and given return status, white. */
+    protected void setFullScreenDialogClose(final int result, boolean white) {
+        setFullScreenDialogClose(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                setResult(result);
+                finish();
+            }
+        }, white);
     }
 
     /**

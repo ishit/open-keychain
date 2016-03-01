@@ -1,11 +1,52 @@
 [//]: # (NOTE: Please put every sentence in its own line, Transifex puts every line in its own translation field!)
 
+## 3.8
+
+  * 鍵編集の再デザイン
+  * パスワードを入力する際、個別に記録した時間を選択します
+  * Facebook 鍵インポート
+
+
+## 3.7
+
+  * Android 6 サポートの改善 (アクセス許可、テキスト選択への統合)
+  * API: Version 10
+
+
+## 3.6
+
+  * 暗号化したバックアップ
+  * 外部セキュリティ監査によるセキュリティ修正
+  * YubiKey NEO 鍵生成ウィザード
+  * 基本的な内部 MIME のサポート
+  * 自動鍵同期
+  * 試験的機能: Github, Twitter アカウントと鍵のリンク
+  * 試験的機能: 語句による鍵検証
+  * 試験的機能: ダークテーマ
+  * API: Version 9
+
+
+## 3.5
+
+  * 鍵削除時の鍵の破棄
+  * セキュアではない暗号についてのチェックの改善
+  * 修正: OpenKeychainの初回ウィザード成功後クローズされない問題
+  * API: Version 8
+
+
+## 3.4
+
+  * Tor経由での匿名鍵ダウンロード
+  * プロキシのサポート
+  * よりよりYubiKeyのエラーの扱い
+
 
 ## 3.3
 
-  * New decryption screen
-  * Decryption of multiple files at once
-  * Better handling of YubiKey errors
+  * 新しい復号画面
+  * 一度に複数のファイルの復号
+  * YubiKeyのエラーについてよりよい扱い
+
 
 ## 3.2
 

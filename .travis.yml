@@ -1,18 +1,21 @@
 language: android
 jdk: openjdk7
-# container based build, we don't need root anyways
-sudo: false
 # env:
     # global:
         # - ANDROID_API_LEVEL=21
           # - ANDROID_ABI=armeabi-v7a
           # - ADB_INSTALL_TIMEOUT=8 # minutes (2 minutes by default)
+
+# force non-container build
+sudo: required
+# OpenJDK 6 and OpenJDK 7 processes will encounter buffer overflows when the host name is too long.
+# https://docs.travis-ci.com/user/hostname
+addons:
+    hostname: short-hostname
 android:
     components:
-        - build-tools-22.0.1
-        - build-tools-21.1.2
-        - build-tools-21.1.1
-        - build-tools-19.1.0
+        - build-tools-23.0.1
+        - android-23
         - android-22
         - android-21
         - android-19
@@ -33,4 +36,4 @@ android:
 
 script:
     # - ./gradlew connectedAndroidTest
-    - ./gradlew testDebug jacocoTestReport coveralls
+    - ./gradlew --stacktrace testDebug jacocoTestReport coveralls

@@ -18,12 +18,12 @@
 
 package org.sufficientlysecure.keychain.pgp;
 
-import org.spongycastle.openpgp.PGPKeyRing;
-import org.spongycastle.openpgp.PGPPublicKey;
-import org.spongycastle.openpgp.PGPSecretKey;
-import org.spongycastle.openpgp.PGPSecretKeyRing;
-import org.spongycastle.openpgp.PGPSignature;
-import org.spongycastle.openpgp.jcajce.JcaPGPObjectFactory;
+import org.bouncycastle.openpgp.PGPKeyRing;
+import org.bouncycastle.openpgp.PGPPublicKey;
+import org.bouncycastle.openpgp.PGPSecretKey;
+import org.bouncycastle.openpgp.PGPSecretKeyRing;
+import org.bouncycastle.openpgp.PGPSignature;
+import org.bouncycastle.openpgp.jcajce.JcaPGPObjectFactory;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.util.IterableIterator;
@@ -68,20 +68,6 @@ public class CanonicalizedSecretKeyRing extends CanonicalizedKeyRing {
 
     public CanonicalizedSecretKey getSecretKey(long id) {
         return new CanonicalizedSecretKey(this, mRing.getSecretKey(id));
-    }
-
-    /** Returns the key id which should be used for signing.
-     *
-     * This method returns keys which are actually available (ie. secret available, and not stripped,
-     * revoked, or expired), hence only works on keyrings where a secret key is available!
-     */
-    public long getSecretSignId() throws PgpGeneralException {
-        for(CanonicalizedSecretKey key : secretKeyIterator()) {
-            if (key.canSign() && key.isValid() && key.getSecretKeyType().isUsable()) {
-                return key.getKeyId();
-            }
-        }
-        throw new PgpGeneralException("no valid signing key available");
     }
 
     public IterableIterator<CanonicalizedSecretKey> secretKeyIterator() {

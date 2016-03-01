@@ -19,19 +19,26 @@ package org.sufficientlysecure.keychain.keyimport;
 
 import com.textuality.keybase.lib.KeybaseException;
 import com.textuality.keybase.lib.Match;
-import com.textuality.keybase.lib.Search;
+import com.textuality.keybase.lib.KeybaseQuery;
 import com.textuality.keybase.lib.User;
 
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.util.Log;
+import org.sufficientlysecure.keychain.util.OkHttpKeybaseClient;
 
+import java.net.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 
 public class KeybaseKeyserver extends Keyserver {
     public static final String ORIGIN = "keybase:keybase.io";
-    private String mQuery;
+
+    Proxy mProxy;
+
+    public KeybaseKeyserver(Proxy proxy) {
+        mProxy = proxy;
+    }
 
     @Override
     public ArrayList<ImportKeysListEntry> search(String query) throws QueryFailedException,
@@ -45,12 +52,13 @@ public class KeybaseKeyserver extends Keyserver {
         if (query.isEmpty()) {
             throw new QueryTooShortException();
         }
-        mQuery = query;
 
         try {
-            Iterable<Match> matches = Search.search(query);
+            KeybaseQuery keybaseQuery = new KeybaseQuery(new OkHttpKeybaseClient());
+            keybaseQuery.setProxy(mProxy);
+            Iterable<Match> matches = keybaseQuery.search(query);
             for (Match match : matches) {
-                results.add(makeEntry(match));
+                results.add(makeEntry(match, query));
             }
         } catch (KeybaseException e) {
             Log.e(Constants.TAG, "keybase result parsing error", e);
@@ -60,9 +68,9 @@ public class KeybaseKeyserver extends Keyserver {
         return results;
     }
 
-    private ImportKeysListEntry makeEntry(Match match) throws KeybaseException {
+    private ImportKeysListEntry makeEntry(Match match, String query) throws KeybaseException {
         final ImportKeysListEntry entry = new ImportKeysListEntry();
-        entry.setQuery(mQuery);
+        entry.setQuery(query);
         entry.addOrigin(ORIGIN);
 
         entry.setRevoked(false); // keybase doesn’t say anything about revoked keys
@@ -73,8 +81,9 @@ public class KeybaseKeyserver extends Keyserver {
         entry.setFingerprintHex(fingerprint);
 
         entry.setKeyIdHex("0x" + match.getKeyID());
-        // store extra info, so we can query for the keybase id directly
-        entry.setExtraData(username);
+        // so we can query for the keybase id directly, and to identify the location from which the
+        // key is to be retrieved
+        entry.setKeybaseName(username);
 
         final int bitStrength = match.getBitStrength();
         entry.setBitStrength(bitStrength);
@@ -100,7 +109,9 @@ public class KeybaseKeyserver extends Keyserver {
     @Override
     public String get(String id) throws QueryFailedException {
         try {
-            return User.keyForUsername(id);
+            KeybaseQuery keybaseQuery = new KeybaseQuery(new OkHttpKeybaseClient());
+            keybaseQuery.setProxy(mProxy);
+            return User.keyForUsername(keybaseQuery, id);
         } catch (KeybaseException e) {
             throw new QueryFailedException(e.getMessage());
         }

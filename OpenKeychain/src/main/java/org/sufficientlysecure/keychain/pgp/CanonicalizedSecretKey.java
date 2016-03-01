@@ -18,35 +18,38 @@
 
 package org.sufficientlysecure.keychain.pgp;
 
-import org.spongycastle.bcpg.S2K;
-import org.spongycastle.openpgp.PGPException;
-import org.spongycastle.openpgp.PGPPrivateKey;
-import org.spongycastle.openpgp.PGPSecretKey;
-import org.spongycastle.openpgp.PGPSignature;
-import org.spongycastle.openpgp.PGPSignatureGenerator;
-import org.spongycastle.openpgp.PGPSignatureSubpacketGenerator;
-import org.spongycastle.openpgp.operator.PBESecretKeyDecryptor;
-import org.spongycastle.openpgp.operator.PGPContentSignerBuilder;
-import org.spongycastle.openpgp.operator.jcajce.CachingDataDecryptorFactory;
-import org.spongycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder;
-import org.spongycastle.openpgp.operator.jcajce.JcaPGPKeyConverter;
-import org.spongycastle.openpgp.operator.jcajce.JcePBESecretKeyDecryptorBuilder;
-import org.spongycastle.openpgp.operator.jcajce.JcePublicKeyDataDecryptorFactoryBuilder;
-import org.spongycastle.openpgp.operator.jcajce.NfcSyncPGPContentSignerBuilder;
-import org.sufficientlysecure.keychain.Constants;
-import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
-import org.sufficientlysecure.keychain.pgp.exception.PgpKeyNotFoundException;
-import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
-import org.sufficientlysecure.keychain.util.Log;
-import org.sufficientlysecure.keychain.util.Passphrase;
 
 import java.nio.ByteBuffer;
 import java.security.PrivateKey;
 import java.security.interfaces.RSAPrivateCrtKey;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.bouncycastle.bcpg.S2K;
+import org.bouncycastle.bcpg.SymmetricKeyAlgorithmTags;
+import org.bouncycastle.openpgp.PGPException;
+import org.bouncycastle.openpgp.PGPPrivateKey;
+import org.bouncycastle.openpgp.PGPSecretKey;
+import org.bouncycastle.openpgp.PGPSignature;
+import org.bouncycastle.openpgp.PGPSignatureGenerator;
+import org.bouncycastle.openpgp.PGPSignatureSubpacketGenerator;
+import org.bouncycastle.openpgp.operator.PBESecretKeyDecryptor;
+import org.bouncycastle.openpgp.operator.PGPContentSignerBuilder;
+import org.bouncycastle.openpgp.operator.jcajce.CachingDataDecryptorFactory;
+import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder;
+import org.bouncycastle.openpgp.operator.jcajce.JcaPGPKeyConverter;
+import org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyDecryptorBuilder;
+import org.bouncycastle.openpgp.operator.jcajce.JcePublicKeyDataDecryptorFactoryBuilder;
+import org.bouncycastle.openpgp.operator.jcajce.NfcSyncPGPContentSignerBuilder;
+import org.bouncycastle.openpgp.operator.jcajce.SessionKeySecretKeyDecryptorBuilder;
+import org.sufficientlysecure.keychain.Constants;
+import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
+import org.sufficientlysecure.keychain.pgp.exception.PgpKeyNotFoundException;
+import org.sufficientlysecure.keychain.provider.ProviderHelper;
+import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
+import org.sufficientlysecure.keychain.util.Log;
+import org.sufficientlysecure.keychain.util.Passphrase;
 
 
 /**
@@ -119,7 +122,14 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
 
     }
 
-    public SecretKeyType getSecretKeyType() {
+    /** This method returns the SecretKeyType for this secret key, testing for an empty
+     * passphrase in the process.
+     *
+     * This method can potentially take a LONG time (i.e. seconds), so it should only
+     * ever be called by {@link ProviderHelper} for the purpose of caching its output
+     * in the database.
+     */
+    public SecretKeyType getSecretKeyTypeSuperExpensive() {
         S2K s2k = mSecretKey.getS2K();
         if (s2k != null && s2k.getType() == S2K.GNU_DUMMY_S2K) {
             // divert to card is special
@@ -146,13 +156,12 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
             // Otherwise, it's just a regular ol' passphrase
             return SecretKeyType.PASSPHRASE;
         }
-
     }
 
     /**
      * Returns true on right passphrase
      */
-    public boolean unlock(Passphrase passphrase) throws PgpGeneralException {
+    public boolean unlock(final Passphrase passphrase) throws PgpGeneralException {
         // handle keys on OpenPGP cards like they were unlocked
         S2K s2k = mSecretKey.getS2K();
         if (s2k != null
@@ -164,8 +173,26 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
 
         // try to extract keys using the passphrase
         try {
-            PBESecretKeyDecryptor keyDecryptor = new JcePBESecretKeyDecryptorBuilder().setProvider(
-                    Constants.BOUNCY_CASTLE_PROVIDER_NAME).build(passphrase.getCharArray());
+
+            int keyEncryptionAlgorithm = mSecretKey.getKeyEncryptionAlgorithm();
+            if (keyEncryptionAlgorithm == SymmetricKeyAlgorithmTags.NULL) {
+                mPrivateKey = mSecretKey.extractPrivateKey(null);
+                mPrivateKeyState = PRIVATE_KEY_STATE_UNLOCKED;
+                return true;
+            }
+
+            byte[] sessionKey;
+            sessionKey = passphrase.getCachedSessionKeyForParameters(keyEncryptionAlgorithm, s2k);
+            if (sessionKey == null) {
+                PBESecretKeyDecryptor keyDecryptor = new JcePBESecretKeyDecryptorBuilder().setProvider(
+                        Constants.BOUNCY_CASTLE_PROVIDER_NAME).build(passphrase.getCharArray());
+                // this operation is EXPENSIVE, so we cache its result in the passed Passphrase object!
+                sessionKey = keyDecryptor.makeKeyFromPassPhrase(keyEncryptionAlgorithm, s2k);
+                passphrase.addCachedSessionKeyForParameters(keyEncryptionAlgorithm, s2k, sessionKey);
+            }
+
+            PBESecretKeyDecryptor keyDecryptor = new SessionKeySecretKeyDecryptorBuilder()
+                    .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME).build(sessionKey);
             mPrivateKey = mSecretKey.extractPrivateKey(keyDecryptor);
             mPrivateKeyState = PRIVATE_KEY_STATE_UNLOCKED;
         } catch (PGPException e) {
@@ -175,16 +202,6 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
             throw new PgpGeneralException("error extracting key");
         }
         return true;
-    }
-
-    /**
-     * Returns a list of all supported hash algorithms.
-     */
-    public ArrayList<Integer> getSupportedHashAlgorithms() {
-        // TODO: intersection between preferred hash algos of this key and PgpConstants.PREFERRED_HASH_ALGORITHMS
-        // choose best algo
-
-        return PgpConstants.sPreferredHashAlgorithms;
     }
 
     private PGPContentSignerBuilder getContentSignerBuilder(int hashAlgo,
@@ -205,7 +222,7 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
 
     public PGPSignatureGenerator getCertSignatureGenerator(Map<ByteBuffer, byte[]> signedHashes) {
         PGPContentSignerBuilder contentSignerBuilder = getContentSignerBuilder(
-                PgpConstants.CERTIFY_HASH_ALGO, signedHashes);
+                PgpSecurityConstants.CERTIFY_HASH_ALGO, signedHashes);
 
         if (mPrivateKeyState == PRIVATE_KEY_STATE_LOCKED) {
             throw new PrivateKeyNotUnlockedException();

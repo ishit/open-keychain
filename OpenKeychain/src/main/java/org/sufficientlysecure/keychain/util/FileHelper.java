@@ -17,71 +17,106 @@
 
 package org.sufficientlysecure.keychain.util;
 
-import android.annotation.TargetApi;
-import android.app.Activity;
-import android.content.ActivityNotFoundException;
-import android.content.ContentResolver;
-import android.content.Context;
-import android.content.Intent;
-import android.database.Cursor;
-import android.graphics.Bitmap;
-import android.graphics.Point;
-import android.net.Uri;
-import android.os.Build;
-import android.os.Environment;
-import android.os.Handler;
-import android.os.Message;
-import android.os.Messenger;
-import android.provider.DocumentsContract;
-import android.provider.OpenableColumns;
-import android.support.v4.app.Fragment;
-import android.support.v4.app.FragmentManager;
-import android.widget.Toast;
-
-import org.sufficientlysecure.keychain.R;
-import org.sufficientlysecure.keychain.compatibility.DialogFragmentWorkaround;
-import org.sufficientlysecure.keychain.ui.dialog.FileDialogFragment;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.security.SecureRandom;
 import java.text.DecimalFormat;
+import java.util.List;
 
+import android.annotation.TargetApi;
+import android.content.ActivityNotFoundException;
+import android.content.ContentResolver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.Point;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Build.VERSION_CODES;
+import android.os.Environment;
+import android.provider.DocumentsContract;
+import android.provider.OpenableColumns;
+import android.support.v4.app.Fragment;
+import android.widget.Toast;
+
+import org.sufficientlysecure.keychain.Constants;
+import org.sufficientlysecure.keychain.R;
+
+/** This class offers a number of helper functions for saving documents.
+ *
+ * There are three entry points here: openDocument, saveDocument and
+ * saveDocumentDialog. Each behaves a little differently depending on whether
+ * the Android version used is pre or post KitKat.
+ *
+ * - openDocument queries for a document for reading. Used in "open encrypted
+ *   file" ui flow. On pre-kitkat, this relies on an external file manager,
+ *   and will fail with a toast message if none is installed.
+ *
+ * - saveDocument queries for a document name for saving. on pre-kitkat, this
+ *   shows a dialog where a filename can be input.  on kitkat and up, it
+ *   directly triggers a "save document" intent. Used in "save encrypted file"
+ *   ui flow.
+ *
+ * - saveDocumentDialog queries for a document. this shows a dialog on all
+ *   versions of android. the browse button opens an external browser on
+ *   pre-kitkat or the "save document" intent on post-kitkat devices. Used in
+ *   "backup key" ui flow.
+ *
+ *   It is noteworthy that the "saveDocument" call is essentially substituted
+ *   by the "saveDocumentDialog" on pre-kitkat devices.
+ *
+ */
 public class FileHelper {
 
-    /**
-     * Checks if external storage is mounted if file is located on external storage
-     *
-     * @return true if storage is mounted
-     */
-    public static boolean isStorageMounted(String file) {
-        if (file.startsWith(Environment.getExternalStorageDirectory().getAbsolutePath())) {
-            if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
-                return false;
-            }
-        }
+    private static Boolean hasOpenDocumentIntent;
 
-        return true;
+    @TargetApi(VERSION_CODES.KITKAT)
+    public static void saveDocument(Fragment fragment, String targetName, int requestCode) {
+        saveDocument(fragment, targetName, "*/*", requestCode);
     }
 
-    /**
-     * Opens the preferred installed file manager on Android and shows a toast if no manager is
-     * installed.
-     *
-     * @param last        default selected Uri, not supported by all file managers
-     * @param mimeType    can be text/plain for example
-     * @param requestCode requestCode used to identify the result coming back from file manager to
-     *                    onActivityResult() in your activity
-     */
-    public static void openFile(Fragment fragment, Uri last, String mimeType, int requestCode) {
+    /** Opens the storage browser on Android 4.4 or later for saving a file. */
+    @TargetApi(VERSION_CODES.KITKAT)
+    public static void saveDocument(Fragment fragment, String suggestedName, String mimeType, int requestCode) {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(mimeType);
+        // Note: This is not documented, but works: Show the Internal Storage menu item in the drawer!
+        intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
+        intent.putExtra(Intent.EXTRA_TITLE, suggestedName);
+        fragment.startActivityForResult(intent, requestCode);
+    }
+
+    public static void openDocument(Fragment fragment, Uri last, String mimeType, boolean multiple, int requestCode) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT
+                && hasOpenDocumentIntent(fragment.getContext())) {
+            openDocumentKitKat(fragment, mimeType, multiple, requestCode);
+        } else {
+            openDocumentPreKitKat(fragment, last, mimeType, multiple, requestCode);
+        }
+    }
+
+    /** Opens the preferred installed file manager on Android and shows a toast
+     * if no manager is installed. */
+    private static void openDocumentPreKitKat(
+            Fragment fragment, Uri last, String mimeType, boolean multiple, int requestCode) {
+
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-
+        if (Build.VERSION.SDK_INT >= VERSION_CODES.JELLY_BEAN_MR2) {
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+        }
         intent.setData(last);
         intent.setType(mimeType);
 
@@ -92,90 +127,39 @@ public class FileHelper {
             Toast.makeText(fragment.getActivity(), R.string.no_filemanager_installed,
                     Toast.LENGTH_SHORT).show();
         }
+
     }
 
-    public static void saveFile(final FileDialogCallback callback, final FragmentManager fragmentManager,
-                                final String title, final String message, final File defaultFile,
-                                final String checkMsg) {
-        // Message is received after file is selected
-        Handler returnHandler = new Handler() {
-            @Override
-            public void handleMessage(Message message) {
-                if (message.what == FileDialogFragment.MESSAGE_OKAY) {
-                    callback.onFileSelected(
-                            new File(message.getData().getString(FileDialogFragment.MESSAGE_DATA_FILE)),
-                            message.getData().getBoolean(FileDialogFragment.MESSAGE_DATA_CHECKED));
-                }
-            }
-        };
-
-        // Create a new Messenger for the communication back
-        final Messenger messenger = new Messenger(returnHandler);
-
-        DialogFragmentWorkaround.INTERFACE.runnableRunDelayed(new Runnable() {
-            @Override
-            public void run() {
-                FileDialogFragment fileDialog = FileDialogFragment.newInstance(messenger, title, message,
-                        defaultFile, checkMsg);
-
-                fileDialog.show(fragmentManager, "fileDialog");
-            }
-        });
-    }
-
-    public static void saveFile(Fragment fragment, String title, String message, File defaultFile, int requestCode) {
-        saveFile(fragment, title, message, defaultFile, requestCode, null);
-    }
-
-    public static void saveFile(final Fragment fragment, String title, String message, File defaultFile,
-                                final int requestCode, String checkMsg) {
-        saveFile(new FileDialogCallback() {
-            @Override
-            public void onFileSelected(File file, boolean checked) {
-                Intent intent = new Intent();
-                intent.setData(Uri.fromFile(file));
-                fragment.onActivityResult(requestCode, Activity.RESULT_OK, intent);
-            }
-        }, fragment.getActivity().getSupportFragmentManager(), title, message, defaultFile, checkMsg);
-    }
-
+    /** Opens the storage browser on Android 4.4 or later for opening a file */
     @TargetApi(Build.VERSION_CODES.KITKAT)
-    public static void openDocument(Fragment fragment, String mimeType, int requestCode) {
-        openDocument(fragment, mimeType, false, requestCode);
-    }
-
-    /**
-     * Opens the storage browser on Android 4.4 or later for opening a file
-     *
-     * @param mimeType    can be text/plain for example
-     * @param multiple    allow file chooser to return multiple files
-     * @param requestCode used to identify the result coming back from storage browser onActivityResult() in your
-     */
-    @TargetApi(Build.VERSION_CODES.KITKAT)
-    public static void openDocument(Fragment fragment, String mimeType, boolean multiple, int requestCode) {
+    private static void openDocumentKitKat(Fragment fragment, String mimeType, boolean multiple, int requestCode) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType(mimeType);
+        // Note: This is not documented, but works: Show the Internal Storage menu item in the drawer!
+        intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
 
         fragment.startActivityForResult(intent, requestCode);
     }
 
     /**
-     * Opens the storage browser on Android 4.4 or later for saving a file
+     * Does the device actually have a ACTION_OPEN_DOCUMENT Intent? Looks like some Android
+     * distributions are missing the ACTION_OPEN_DOCUMENT Intent even on Android 4.4,
+     * see https://github.com/open-keychain/open-keychain/issues/1625
      *
-     * @param mimeType      can be text/plain for example
-     * @param suggestedName a filename desirable for the file to be saved
-     * @param requestCode   used to identify the result coming back from storage browser onActivityResult() in your
+     * @return True, if the device supports ACTION_OPEN_DOCUMENT. False, otherwise.
      */
-    @TargetApi(Build.VERSION_CODES.KITKAT)
-    public static void saveDocument(Fragment fragment, String mimeType, String suggestedName, int requestCode) {
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType(mimeType);
-        intent.putExtra("android.content.extra.SHOW_ADVANCED", true); // Note: This is not documented, but works
-        intent.putExtra(Intent.EXTRA_TITLE, suggestedName);
-        fragment.startActivityForResult(intent, requestCode);
+    @TargetApi(VERSION_CODES.KITKAT)
+    private static boolean hasOpenDocumentIntent(Context context) {
+        if (hasOpenDocumentIntent == null) {
+            PackageManager packageManager = context.getPackageManager();
+            List<ResolveInfo> resolveInfoList = packageManager.queryIntentActivities(
+                    new Intent(Intent.ACTION_OPEN_DOCUMENT), 0);
+            hasOpenDocumentIntent = !resolveInfoList.isEmpty();
+        }
+
+        return hasOpenDocumentIntent;
     }
 
     public static String getFilename(Context context, Uri uri) {
@@ -204,6 +188,14 @@ public class FileHelper {
     }
 
     public static long getFileSize(Context context, Uri uri, long def) {
+        if (ContentResolver.SCHEME_FILE.equals(uri.getScheme())) {
+            long size = new File(uri.getPath()).length();
+            if (size == 0) {
+                size = def;
+            }
+            return size;
+        }
+
         long size = def;
         try {
             Cursor cursor = context.getContentResolver().query(uri, new String[]{OpenableColumns.SIZE}, null, null, null);
@@ -298,7 +290,73 @@ public class FileHelper {
         }
     }
 
-    public interface FileDialogCallback {
-        void onFileSelected(File file, boolean checked);
+    /**
+     * Deletes data at a URI securely by overwriting it with random data
+     * before deleting it. This method is fail-fast - if we can't securely
+     * delete the file, we don't delete it at all.
+     */
+    public static int deleteFileSecurely(Context context, Uri uri)
+            throws IOException {
+
+        ContentResolver resolver = context.getContentResolver();
+        long lengthLeft = FileHelper.getFileSize(context, uri);
+
+        if (lengthLeft == -1) {
+            throw new IOException("Error opening file!");
+        }
+
+        SecureRandom random = new SecureRandom();
+        byte[] randomData = new byte[1024];
+
+        OutputStream out = resolver.openOutputStream(uri, "w");
+        if (out == null) {
+            throw new IOException("Error opening file!");
+        }
+        out = new BufferedOutputStream(out);
+        while (lengthLeft > 0) {
+            random.nextBytes(randomData);
+            out.write(randomData, 0, lengthLeft > randomData.length ? randomData.length : (int) lengthLeft);
+            lengthLeft -= randomData.length;
+        }
+        out.close();
+
+        if (ContentResolver.SCHEME_FILE.equals(uri.getScheme())) {
+            return new File(uri.getPath()).delete() ? 1 : 0;
+        } else {
+            return resolver.delete(uri, null, null);
+        }
+
     }
+
+    /** Checks if external storage is mounted if file is located on external storage. */
+    public static boolean isStorageMounted(String file) {
+        if (file.startsWith(Environment.getExternalStorageDirectory().getAbsolutePath())) {
+            if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** A replacement for ContentResolver.openInputStream() that does not allow
+     * the usage of "file" Uris that point to private files owned by the
+     * application only, *on Lollipop devices*.
+     *
+     * The check will be performed on devices >= Lollipop only, which have the
+     * necessary API to stat filedescriptors.
+     *
+     * @see FileHelperLollipop
+     */
+    public static InputStream openInputStreamSafe(ContentResolver resolver, Uri uri)
+        throws FileNotFoundException {
+
+        // Not supported on Android < 5
+        if (Build.VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP) {
+            return FileHelperLollipop.openInputStreamSafe(resolver, uri);
+        } else {
+            return resolver.openInputStream(uri);
+        }
+    }
+
 }

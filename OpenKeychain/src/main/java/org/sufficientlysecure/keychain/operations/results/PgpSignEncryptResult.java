@@ -19,12 +19,17 @@ package org.sufficientlysecure.keychain.operations.results;
 
 import android.os.Parcel;
 
+import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.service.input.RequiredInputParcel;
 
 
 public class PgpSignEncryptResult extends InputPendingResult {
 
     byte[] mDetachedSignature;
+    public long mOperationTime;
+    // this is the micalg parameter used in PGP/MIME, see RFC3156:
+    // https://tools.ietf.org/html/rfc3156#section-5
+    private String mMicAlgDigestName;
 
     public void setDetachedSignature(byte[] detachedSignature) {
         mDetachedSignature = detachedSignature;
@@ -38,8 +43,9 @@ public class PgpSignEncryptResult extends InputPendingResult {
         super(result, log);
     }
 
-    public PgpSignEncryptResult(OperationLog log, RequiredInputParcel requiredInput) {
-        super(log, requiredInput);
+    public PgpSignEncryptResult(OperationLog log, RequiredInputParcel requiredInput,
+                                CryptoInputParcel cryptoInputParcel) {
+        super(log, requiredInput, cryptoInputParcel);
     }
 
     public PgpSignEncryptResult(Parcel source) {
@@ -71,4 +77,11 @@ public class PgpSignEncryptResult extends InputPendingResult {
         }
     };
 
+    public void setMicAlgDigestName(String micAlgDigestName) {
+        mMicAlgDigestName = micAlgDigestName;
+    }
+
+    public String getMicAlgDigestName() {
+        return mMicAlgDigestName;
+    }
 }

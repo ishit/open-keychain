@@ -27,32 +27,32 @@ import org.robolectric.RobolectricGradleTestRunner;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLog;
-import org.spongycastle.bcpg.BCPGInputStream;
-import org.spongycastle.bcpg.HashAlgorithmTags;
-import org.spongycastle.bcpg.Packet;
-import org.spongycastle.bcpg.PacketTags;
-import org.spongycastle.bcpg.SymmetricKeyAlgorithmTags;
-import org.spongycastle.bcpg.UserIDPacket;
-import org.spongycastle.bcpg.sig.KeyFlags;
-import org.spongycastle.jce.provider.BouncyCastleProvider;
-import org.spongycastle.openpgp.PGPPrivateKey;
-import org.spongycastle.openpgp.PGPPublicKey;
-import org.spongycastle.openpgp.PGPSecretKey;
-import org.spongycastle.openpgp.PGPSecretKeyRing;
-import org.spongycastle.openpgp.PGPSignature;
-import org.spongycastle.openpgp.PGPSignatureGenerator;
-import org.spongycastle.openpgp.PGPSignatureSubpacketGenerator;
-import org.spongycastle.openpgp.PGPUtil;
-import org.spongycastle.openpgp.operator.PBESecretKeyDecryptor;
-import org.spongycastle.openpgp.operator.PBESecretKeyEncryptor;
-import org.spongycastle.openpgp.operator.PGPContentSignerBuilder;
-import org.spongycastle.openpgp.operator.PGPDigestCalculator;
-import org.spongycastle.openpgp.operator.jcajce.JcaKeyFingerprintCalculator;
-import org.spongycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder;
-import org.spongycastle.openpgp.operator.jcajce.JcaPGPDigestCalculatorProviderBuilder;
-import org.spongycastle.openpgp.operator.jcajce.JcePBESecretKeyDecryptorBuilder;
-import org.spongycastle.openpgp.operator.jcajce.JcePBESecretKeyEncryptorBuilder;
-import org.spongycastle.util.Strings;
+import org.bouncycastle.bcpg.BCPGInputStream;
+import org.bouncycastle.bcpg.HashAlgorithmTags;
+import org.bouncycastle.bcpg.Packet;
+import org.bouncycastle.bcpg.PacketTags;
+import org.bouncycastle.bcpg.SymmetricKeyAlgorithmTags;
+import org.bouncycastle.bcpg.UserIDPacket;
+import org.bouncycastle.bcpg.sig.KeyFlags;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.openpgp.PGPPrivateKey;
+import org.bouncycastle.openpgp.PGPPublicKey;
+import org.bouncycastle.openpgp.PGPSecretKey;
+import org.bouncycastle.openpgp.PGPSecretKeyRing;
+import org.bouncycastle.openpgp.PGPSignature;
+import org.bouncycastle.openpgp.PGPSignatureGenerator;
+import org.bouncycastle.openpgp.PGPSignatureSubpacketGenerator;
+import org.bouncycastle.openpgp.PGPUtil;
+import org.bouncycastle.openpgp.operator.PBESecretKeyDecryptor;
+import org.bouncycastle.openpgp.operator.PBESecretKeyEncryptor;
+import org.bouncycastle.openpgp.operator.PGPContentSignerBuilder;
+import org.bouncycastle.openpgp.operator.PGPDigestCalculator;
+import org.bouncycastle.openpgp.operator.jcajce.JcaKeyFingerprintCalculator;
+import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder;
+import org.bouncycastle.openpgp.operator.jcajce.JcaPGPDigestCalculatorProviderBuilder;
+import org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyDecryptorBuilder;
+import org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyEncryptorBuilder;
+import org.bouncycastle.util.Strings;
 import org.sufficientlysecure.keychain.BuildConfig;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.WorkaroundBuildConfig;
@@ -89,8 +89,8 @@ public class UncachedKeyringCanonicalizeTest {
     static UncachedKeyRing staticRing;
     static int totalPackets;
     UncachedKeyRing ring;
-    ArrayList<RawPacket> onlyA = new ArrayList<RawPacket>();
-    ArrayList<RawPacket> onlyB = new ArrayList<RawPacket>();
+    ArrayList<RawPacket> onlyA = new ArrayList<>();
+    ArrayList<RawPacket> onlyB = new ArrayList<>();
     OperationResult.OperationLog log = new OperationResult.OperationLog();
     PGPSignatureSubpacketGenerator subHashedPacketsGen;
     PGPSecretKey secretKey;
@@ -102,11 +102,11 @@ public class UncachedKeyringCanonicalizeTest {
 
         SaveKeyringParcel parcel = new SaveKeyringParcel();
         parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                Algorithm.RSA, 1024, null, KeyFlags.CERTIFY_OTHER, 0L));
+                Algorithm.ECDSA, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.CERTIFY_OTHER, 0L));
         parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                Algorithm.RSA, 1024, null, KeyFlags.SIGN_DATA, 0L));
+                Algorithm.ECDSA, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.SIGN_DATA, 0L));
         parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                Algorithm.RSA, 1024, null, KeyFlags.ENCRYPT_COMMS, 0L));
+                Algorithm.ECDH, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.ENCRYPT_COMMS, 0L));
 
         parcel.mAddUserIds.add("twi");
         parcel.mAddUserIds.add("pink");
@@ -358,7 +358,7 @@ public class UncachedKeyringCanonicalizeTest {
 
         SaveKeyringParcel parcel = new SaveKeyringParcel();
         parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                Algorithm.RSA, 1024, null, KeyFlags.CERTIFY_OTHER, 0L));
+                Algorithm.ECDSA, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.CERTIFY_OTHER, 0L));
         parcel.mAddUserIds.add("trix");
         PgpKeyOperation op = new PgpKeyOperation(null);
 
@@ -554,12 +554,13 @@ public class UncachedKeyringCanonicalizeTest {
             CanonicalizedSecretKey masterSecretKey = canonicalized.getSecretKey();
             masterSecretKey.unlock(new Passphrase());
             PGPPublicKey masterPublicKey = masterSecretKey.getPublicKey();
-            CryptoInputParcel cryptoInput = new CryptoInputParcel();
+            CryptoInputParcel cryptoInput = new CryptoInputParcel(new Date());
             PGPSignature cert = PgpKeyOperation.generateSubkeyBindingSignature(
                     PgpKeyOperation.getSignatureGenerator(masterSecretKey.getSecretKey(), cryptoInput),
                     cryptoInput.getSignatureTime(),
-                    masterPublicKey, masterSecretKey.getPrivateKey(), masterSecretKey.getPrivateKey(),
-                    masterPublicKey, masterSecretKey.getKeyUsage(), 0);
+                    masterPublicKey, masterSecretKey.getPrivateKey(),
+                    PgpKeyOperation.getSignatureGenerator(masterSecretKey.getSecretKey(), null),
+                    masterSecretKey.getPrivateKey(), masterPublicKey, masterSecretKey.getKeyUsage(), 0);
             PGPPublicKey subPubKey = PGPPublicKey.addSubkeyBindingCertification(masterPublicKey, cert);
 
             PGPSecretKey sKey;

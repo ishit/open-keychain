@@ -23,12 +23,14 @@ import android.content.Context;
 import android.database.Cursor;
 import android.graphics.Typeface;
 import android.net.Uri;
+import android.support.annotation.Nullable;
 import android.support.v4.content.CursorLoader;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.ViewAnimator;
 
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.pgp.KeyRing;
@@ -52,10 +54,6 @@ public class UserIdsAdapter extends UserAttributesAdapter {
         mShowStatusImages = showStatusImages;
     }
 
-    public UserIdsAdapter(Context context, Cursor c, int flags, SaveKeyringParcel saveKeyringParcel) {
-        this(context, c, flags, true, saveKeyringParcel);
-    }
-
     public UserIdsAdapter(Context context, Cursor c, int flags) {
         this(context, c, flags, true, null);
     }
@@ -66,8 +64,8 @@ public class UserIdsAdapter extends UserAttributesAdapter {
         TextView vAddress = (TextView) view.findViewById(R.id.user_id_item_address);
         TextView vComment = (TextView) view.findViewById(R.id.user_id_item_comment);
         ImageView vVerified = (ImageView) view.findViewById(R.id.user_id_item_certified);
-        View vVerifiedLayout = view.findViewById(R.id.user_id_item_certified_layout);
-        ImageView vEditImage = (ImageView) view.findViewById(R.id.user_id_item_edit_image);
+        ViewAnimator vVerifiedLayout = (ViewAnimator) view.findViewById(R.id.user_id_icon_animator);
+
         ImageView vDeleteButton = (ImageView) view.findViewById(R.id.user_id_item_delete_button);
         vDeleteButton.setVisibility(View.GONE); // not used
 
@@ -114,21 +112,14 @@ public class UserIdsAdapter extends UserAttributesAdapter {
                 }
             }
 
-            vEditImage.setVisibility(View.VISIBLE);
-            vVerifiedLayout.setVisibility(View.GONE);
+            vVerifiedLayout.setDisplayedChild(2);
         } else {
-            vEditImage.setVisibility(View.GONE);
-
-            if (mShowStatusImages) {
-                vVerifiedLayout.setVisibility(View.VISIBLE);
-            } else {
-                vVerifiedLayout.setVisibility(View.GONE);
-            }
+            vVerifiedLayout.setDisplayedChild(mShowStatusImages ? 1 : 0);
         }
 
         if (isRevoked) {
             // set revocation icon (can this even be primary?)
-            KeyFormattingUtils.setStatusImage(mContext, vVerified, null, State.REVOKED, R.color.bg_gray);
+            KeyFormattingUtils.setStatusImage(mContext, vVerified, null, State.REVOKED, R.color.key_flag_gray);
 
             // disable revoked user ids
             vName.setEnabled(false);
@@ -177,6 +168,20 @@ public class UserIdsAdapter extends UserAttributesAdapter {
         return isRevokedPending;
     }
 
+    /** Set this adapter into edit mode. This mode displays additional info for
+     * each item from a supplied SaveKeyringParcel reference.
+     *
+     * Note that it is up to the caller to reload the underlying cursor after
+     * updating the SaveKeyringParcel!
+     *
+     * @see SaveKeyringParcel
+     *
+     * @param saveKeyringParcel The parcel to get info from, or null to leave edit mode.
+     */
+    public void setEditMode(@Nullable SaveKeyringParcel saveKeyringParcel) {
+        mSaveKeyringParcel = saveKeyringParcel;
+    }
+
     @Override
     public View newView(Context context, Cursor cursor, ViewGroup parent) {
         return mInflater.inflate(R.layout.view_key_adv_user_id_item, null);
@@ -188,7 +193,7 @@ public class UserIdsAdapter extends UserAttributesAdapter {
     public static CursorLoader createLoader(Activity activity, Uri dataUri) {
         Uri baseUri = UserPackets.buildUserIdsUri(dataUri);
         return new CursorLoader(activity, baseUri,
-                UserIdsAdapter.USER_IDS_PROJECTION, USER_IDS_WHERE, null, null);
+                UserIdsAdapter.USER_PACKETS_PROJECTION, USER_IDS_WHERE, null, null);
     }
 
 }

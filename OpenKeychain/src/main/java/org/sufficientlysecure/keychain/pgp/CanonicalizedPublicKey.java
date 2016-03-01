@@ -18,10 +18,10 @@
 
 package org.sufficientlysecure.keychain.pgp;
 
-import org.spongycastle.bcpg.sig.KeyFlags;
-import org.spongycastle.openpgp.PGPPublicKey;
-import org.spongycastle.openpgp.PGPSignature;
-import org.spongycastle.openpgp.operator.jcajce.JcePublicKeyKeyEncryptionMethodGenerator;
+import org.bouncycastle.bcpg.sig.KeyFlags;
+import org.bouncycastle.openpgp.PGPPublicKey;
+import org.bouncycastle.openpgp.PGPSignature;
+import org.bouncycastle.openpgp.operator.jcajce.JcePublicKeyKeyEncryptionMethodGenerator;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.util.IterableIterator;
 import org.sufficientlysecure.keychain.util.Log;
@@ -44,11 +44,15 @@ import java.util.Iterator;
 public class CanonicalizedPublicKey extends UncachedPublicKey {
 
     // this is the parent key ring
-    final KeyRing mRing;
+    final CanonicalizedKeyRing mRing;
 
-    CanonicalizedPublicKey(KeyRing ring, PGPPublicKey key) {
+    CanonicalizedPublicKey(CanonicalizedKeyRing ring, PGPPublicKey key) {
         super(key);
         mRing = ring;
+    }
+
+    public CanonicalizedKeyRing getKeyRing() {
+        return mRing;
     }
 
     public IterableIterator<String> getUserIds() {

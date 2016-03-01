@@ -17,8 +17,19 @@
 
 package org.sufficientlysecure.keychain.operations;
 
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import android.content.Context;
 import android.net.Uri;
+import android.support.annotation.NonNull;
 
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.LogType;
@@ -36,23 +47,16 @@ import org.sufficientlysecure.keychain.service.input.RequiredInputParcel.NfcSign
 import org.sufficientlysecure.keychain.service.input.RequiredInputParcel.RequiredInputType;
 import org.sufficientlysecure.keychain.util.FileHelper;
 import org.sufficientlysecure.keychain.util.InputData;
+import org.sufficientlysecure.keychain.util.Log;
 import org.sufficientlysecure.keychain.util.ProgressScaler;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
 
-/** This is a high-level operation, which encapsulates one or more sign/encrypt
+/**
+ * This is a high-level operation, which encapsulates one or more sign/encrypt
  * operations, using URIs or byte arrays as input and output.
  *
  * This operation is fail-fast: If any sign/encrypt sub-operation fails or returns
  * a pending result, it will terminate.
- *
  */
 public class SignEncryptOperation extends BaseOperation<SignEncryptParcel> {
 
@@ -61,6 +65,8 @@ public class SignEncryptOperation extends BaseOperation<SignEncryptParcel> {
         super(context, providerHelper, progressable, cancelled);
     }
 
+
+    @NonNull
     public SignEncryptResult execute(SignEncryptParcel input, CryptoInputParcel cryptoInput) {
 
         OperationLog log = new OperationLog();
@@ -84,7 +90,7 @@ public class SignEncryptOperation extends BaseOperation<SignEncryptParcel> {
                         input.getSignatureMasterKeyId()).getSecretSignId();
                 input.setSignatureSubKeyId(signKeyId);
             } catch (PgpKeyNotFoundException e) {
-                e.printStackTrace();
+                Log.e(Constants.TAG, "Key not found", e);
                 return new SignEncryptResult(SignEncryptResult.RESULT_ERROR, log, results);
             }
         }
@@ -112,7 +118,7 @@ public class SignEncryptOperation extends BaseOperation<SignEncryptParcel> {
                     log.add(LogType.MSG_SE_INPUT_URI, 1);
                     Uri uri = inputUris.removeFirst();
                     try {
-                        InputStream is = mContext.getContentResolver().openInputStream(uri);
+                        InputStream is = FileHelper.openInputStreamSafe(mContext.getContentResolver(), uri);
                         long fileSize = FileHelper.getFileSize(mContext, uri, 0);
                         String filename = FileHelper.getFilename(mContext, uri);
                         inputData = new InputData(is, fileSize, filename);
@@ -152,7 +158,7 @@ public class SignEncryptOperation extends BaseOperation<SignEncryptParcel> {
                 RequiredInputParcel requiredInput = result.getRequiredInputParcel();
                 // Passphrase returns immediately, nfc are aggregated
                 if (requiredInput.mType == RequiredInputType.PASSPHRASE) {
-                    return new SignEncryptResult(log, requiredInput, results);
+                    return new SignEncryptResult(log, requiredInput, results, cryptoInput);
                 }
                 if (pendingInputBuilder == null) {
                     pendingInputBuilder = new NfcSignOperationsBuilder(requiredInput.mSignatureTime,
@@ -170,7 +176,7 @@ public class SignEncryptOperation extends BaseOperation<SignEncryptParcel> {
         } while (!inputUris.isEmpty());
 
         if (pendingInputBuilder != null && !pendingInputBuilder.isEmpty()) {
-            return new SignEncryptResult(log, pendingInputBuilder.build(), results);
+            return new SignEncryptResult(log, pendingInputBuilder.build(), results, cryptoInput);
         }
 
         if (!outputUris.isEmpty()) {

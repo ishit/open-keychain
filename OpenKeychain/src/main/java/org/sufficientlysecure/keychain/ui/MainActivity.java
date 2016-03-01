@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 Dominik Schürmann <dominik@dominikschuermann.de>
+ * Copyright (C) 2012-2015 Dominik Schürmann <dominik@dominikschuermann.de>
  * Copyright (C) 2014 Vincent Breitmoser <v.breitmoser@mugenguild.com>
  * Copyright (C) 2015 Kai Jiang <jiangkai@gmail.com>
  *
@@ -27,35 +27,37 @@ import android.support.v4.app.FragmentManager.OnBackStackChangedListener;
 import android.support.v4.app.FragmentTransaction;
 import android.support.v7.widget.Toolbar;
 import android.view.View;
-import android.widget.AdapterView;
 
 import com.mikepenz.community_material_typeface_library.CommunityMaterial;
+import com.mikepenz.fontawesome_typeface_library.FontAwesome;
 import com.mikepenz.google_material_typeface_library.GoogleMaterial;
-import com.mikepenz.iconics.typeface.FontAwesome;
 import com.mikepenz.materialdrawer.Drawer;
+import com.mikepenz.materialdrawer.DrawerBuilder;
+import com.mikepenz.materialdrawer.model.DividerDrawerItem;
 import com.mikepenz.materialdrawer.model.PrimaryDrawerItem;
 import com.mikepenz.materialdrawer.model.interfaces.IDrawerItem;
 
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.remote.ui.AppsListFragment;
-import org.sufficientlysecure.keychain.ui.base.BaseNfcActivity;
+import org.sufficientlysecure.keychain.ui.base.BaseSecurityTokenNfcActivity;
 import org.sufficientlysecure.keychain.util.FabContainer;
 import org.sufficientlysecure.keychain.util.Preferences;
 
-public class MainActivity extends BaseNfcActivity implements FabContainer, OnBackStackChangedListener {
+public class MainActivity extends BaseSecurityTokenNfcActivity implements FabContainer, OnBackStackChangedListener {
 
     static final int ID_KEYS = 1;
     static final int ID_ENCRYPT_DECRYPT = 2;
     static final int ID_APPS = 3;
-    static final int ID_SETTINGS = 4;
-    static final int ID_HELP = 5;
+    static final int ID_BACKUP = 4;
+    static final int ID_SETTINGS = 5;
+    static final int ID_HELP = 6;
 
     // both of these are used for instrumentation testing only
     public static final String EXTRA_SKIP_FIRST_TIME = "skip_first_time";
     public static final String EXTRA_INIT_FRAG = "init_frag";
 
-    public Drawer.Result mDrawerResult;
+    public Drawer mDrawer;
     private Toolbar mToolbar;
 
     @Override
@@ -67,29 +69,29 @@ public class MainActivity extends BaseNfcActivity implements FabContainer, OnBac
         mToolbar.setTitle(R.string.app_name);
         setSupportActionBar(mToolbar);
 
-        mDrawerResult = new Drawer()
+        mDrawer = new DrawerBuilder()
                 .withActivity(this)
                 .withHeader(R.layout.main_drawer_header)
                 .withToolbar(mToolbar)
                 .addDrawerItems(
                         new PrimaryDrawerItem().withName(R.string.nav_keys).withIcon(CommunityMaterial.Icon.cmd_key)
-                                .withIdentifier(ID_KEYS).withCheckable(false),
+                                .withIdentifier(ID_KEYS).withSelectable(false),
                         new PrimaryDrawerItem().withName(R.string.nav_encrypt_decrypt).withIcon(FontAwesome.Icon.faw_lock)
-                                .withIdentifier(ID_ENCRYPT_DECRYPT).withCheckable(false),
+                                .withIdentifier(ID_ENCRYPT_DECRYPT).withSelectable(false),
                         new PrimaryDrawerItem().withName(R.string.title_api_registered_apps).withIcon(CommunityMaterial.Icon.cmd_apps)
-                                .withIdentifier(ID_APPS).withCheckable(false)
-                )
-                .addStickyDrawerItems(
-                        // display and stick on bottom of drawer
-                        new PrimaryDrawerItem().withName(R.string.menu_preferences).withIcon(GoogleMaterial.Icon.gmd_settings).withIdentifier(ID_SETTINGS).withCheckable(false),
-                        new PrimaryDrawerItem().withName(R.string.menu_help).withIcon(CommunityMaterial.Icon.cmd_help_circle).withIdentifier(ID_HELP).withCheckable(false)
+                                .withIdentifier(ID_APPS).withSelectable(false),
+                        new PrimaryDrawerItem().withName(R.string.nav_backup).withIcon(CommunityMaterial.Icon.cmd_backup_restore)
+                                .withIdentifier(ID_BACKUP).withSelectable(false),
+                        new DividerDrawerItem(),
+                        new PrimaryDrawerItem().withName(R.string.menu_preferences).withIcon(GoogleMaterial.Icon.gmd_settings).withIdentifier(ID_SETTINGS).withSelectable(false),
+                        new PrimaryDrawerItem().withName(R.string.menu_help).withIcon(CommunityMaterial.Icon.cmd_help_circle).withIdentifier(ID_HELP).withSelectable(false)
                 )
                 .withOnDrawerItemClickListener(new Drawer.OnDrawerItemClickListener() {
                     @Override
-                    public void onItemClick(AdapterView<?> parent, View view, int position, long id, IDrawerItem drawerItem) {
+                    public boolean onItemClick(View view, int position, IDrawerItem drawerItem) {
                         if (drawerItem != null) {
                             Intent intent = null;
-                            switch(drawerItem.getIdentifier()) {
+                            switch (drawerItem.getIdentifier()) {
                                 case ID_KEYS:
                                     onKeysSelected();
                                     break;
@@ -98,6 +100,9 @@ public class MainActivity extends BaseNfcActivity implements FabContainer, OnBac
                                     break;
                                 case ID_APPS:
                                     onAppsSelected();
+                                    break;
+                                case ID_BACKUP:
+                                    onBackupSelected();
                                     break;
                                 case ID_SETTINGS:
                                     intent = new Intent(MainActivity.this, SettingsActivity.class);
@@ -110,6 +115,8 @@ public class MainActivity extends BaseNfcActivity implements FabContainer, OnBac
                                 MainActivity.this.startActivity(intent);
                             }
                         }
+
+                        return false;
                     }
                 })
                 .withSelectedItem(-1)
@@ -128,6 +135,11 @@ public class MainActivity extends BaseNfcActivity implements FabContainer, OnBac
 
         getSupportFragmentManager().addOnBackStackChangedListener(this);
 
+        // all further initialization steps are saved as instance state
+        if (savedInstanceState != null) {
+            return;
+        }
+
         Intent data = getIntent();
         // If we got an EXTRA_RESULT in the intent, show the notification
         if (data != null && data.hasExtra(OperationResult.EXTRA_RESULT)) {
@@ -135,20 +147,18 @@ public class MainActivity extends BaseNfcActivity implements FabContainer, OnBac
             result.createNotify(this).show();
         }
 
-        if (savedInstanceState == null) {
-            // always initialize keys fragment to the bottom of the backstack
-            onKeysSelected();
+        // always initialize keys fragment to the bottom of the backstack
+        onKeysSelected();
 
-            if (data != null && data.hasExtra(EXTRA_INIT_FRAG)) {
-                // initialize FragmentLayout with KeyListFragment at first
-                switch (data.getIntExtra(EXTRA_INIT_FRAG, -1)) {
-                    case ID_ENCRYPT_DECRYPT:
-                        onEnDecryptSelected();
-                        break;
-                    case ID_APPS:
-                        onAppsSelected();
-                        break;
-                }
+        if (data != null && data.hasExtra(EXTRA_INIT_FRAG)) {
+            // initialize FragmentLayout with KeyListFragment at first
+            switch (data.getIntExtra(EXTRA_INIT_FRAG, -1)) {
+                case ID_ENCRYPT_DECRYPT:
+                    onEnDecryptSelected();
+                    break;
+                case ID_APPS:
+                    onAppsSelected();
+                    break;
             }
         }
 
@@ -170,37 +180,44 @@ public class MainActivity extends BaseNfcActivity implements FabContainer, OnBac
 
     private void onKeysSelected() {
         mToolbar.setTitle(R.string.app_name);
-        mDrawerResult.setSelectionByIdentifier(ID_KEYS, false);
+        mDrawer.setSelection(ID_KEYS, false);
         Fragment frag = new KeyListFragment();
         setFragment(frag, false);
     }
 
     private void onEnDecryptSelected() {
         mToolbar.setTitle(R.string.nav_encrypt_decrypt);
-        mDrawerResult.setSelectionByIdentifier(ID_ENCRYPT_DECRYPT, false);
-        Fragment frag = new EncryptDecryptOverviewFragment();
+        mDrawer.setSelection(ID_ENCRYPT_DECRYPT, false);
+        Fragment frag = new EncryptDecryptFragment();
         setFragment(frag, true);
     }
 
     private void onAppsSelected() {
         mToolbar.setTitle(R.string.nav_apps);
-        mDrawerResult.setSelectionByIdentifier(ID_APPS, false);
+        mDrawer.setSelection(ID_APPS, false);
         Fragment frag = new AppsListFragment();
+        setFragment(frag, true);
+    }
+
+    private void onBackupSelected() {
+        mToolbar.setTitle(R.string.nav_backup);
+        mDrawer.setSelection(ID_BACKUP, false);
+        Fragment frag = new BackupRestoreFragment();
         setFragment(frag, true);
     }
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         // add the values which need to be saved from the drawer to the bundle
-        outState = mDrawerResult.saveInstanceState(outState);
+        outState = mDrawer.saveInstanceState(outState);
         super.onSaveInstanceState(outState);
     }
 
     @Override
     public void onBackPressed() {
         // close the drawer first and if the drawer is closed do regular backstack handling
-        if (mDrawerResult != null && mDrawerResult.isDrawerOpen()) {
-            mDrawerResult.closeDrawer();
+        if (mDrawer != null && mDrawer.isDrawerOpen()) {
+            mDrawer.closeDrawer();
         } else {
             super.onBackPressed();
         }
@@ -238,11 +255,17 @@ public class MainActivity extends BaseNfcActivity implements FabContainer, OnBac
 
         // make sure the selected icon is the one shown at this point
         if (frag instanceof KeyListFragment) {
-            mDrawerResult.setSelection(mDrawerResult.getPositionFromIdentifier(ID_KEYS), false);
-        } else if (frag instanceof EncryptDecryptOverviewFragment) {
-            mDrawerResult.setSelection(mDrawerResult.getPositionFromIdentifier(ID_ENCRYPT_DECRYPT), false);
+            mToolbar.setTitle(R.string.app_name);
+            mDrawer.setSelection(mDrawer.getPosition(ID_KEYS), false);
+        } else if (frag instanceof EncryptDecryptFragment) {
+            mToolbar.setTitle(R.string.nav_encrypt_decrypt);
+            mDrawer.setSelection(mDrawer.getPosition(ID_ENCRYPT_DECRYPT), false);
         } else if (frag instanceof AppsListFragment) {
-            mDrawerResult.setSelection(mDrawerResult.getPositionFromIdentifier(ID_APPS), false);
+            mToolbar.setTitle(R.string.nav_apps);
+            mDrawer.setSelection(mDrawer.getPosition(ID_APPS), false);
+        } else if (frag instanceof BackupRestoreFragment) {
+            mToolbar.setTitle(R.string.nav_backup);
+            mDrawer.setSelection(mDrawer.getPosition(ID_BACKUP), false);
         }
     }
 

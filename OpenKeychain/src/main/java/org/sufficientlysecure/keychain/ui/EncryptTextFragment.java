@@ -18,6 +18,9 @@
 package org.sufficientlysecure.keychain.ui;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
@@ -30,22 +33,21 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
-import org.spongycastle.bcpg.CompressionAlgorithmTags;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
-import org.sufficientlysecure.keychain.compatibility.ClipboardReflection;
 import org.sufficientlysecure.keychain.operations.results.SignEncryptResult;
 import org.sufficientlysecure.keychain.pgp.KeyRing;
-import org.sufficientlysecure.keychain.pgp.PgpConstants;
+import org.sufficientlysecure.keychain.pgp.PgpSecurityConstants;
 import org.sufficientlysecure.keychain.pgp.SignEncryptParcel;
+import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.ui.base.CachingCryptoOperationFragment;
 import org.sufficientlysecure.keychain.ui.util.Notify;
 import org.sufficientlysecure.keychain.ui.util.Notify.ActionListener;
 import org.sufficientlysecure.keychain.ui.util.Notify.Style;
 import org.sufficientlysecure.keychain.util.Passphrase;
 import org.sufficientlysecure.keychain.util.Preferences;
-import org.sufficientlysecure.keychain.util.ShareHelper;
 
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -54,8 +56,10 @@ public class EncryptTextFragment
 
     public static final String ARG_TEXT = "text";
     public static final String ARG_USE_COMPRESSION = "use_compression";
+    public static final String ARG_RETURN_PROCESS_TEXT = "return_process_text";
 
     private boolean mShareAfterEncrypt;
+    private boolean mReturnProcessTextAfterEncrypt;
     private boolean mUseCompression;
     private boolean mHiddenRecipients = false;
 
@@ -64,11 +68,12 @@ public class EncryptTextFragment
     /**
      * Creates new instance of this fragment
      */
-    public static EncryptTextFragment newInstance(String text) {
+    public static EncryptTextFragment newInstance(String text, boolean returnProcessTextAfterEncrypt) {
         EncryptTextFragment frag = new EncryptTextFragment();
 
         Bundle args = new Bundle();
         args.putString(ARG_TEXT, text);
+        args.putBoolean(ARG_RETURN_PROCESS_TEXT, returnProcessTextAfterEncrypt);
         frag.setArguments(args);
 
         return frag;
@@ -126,6 +131,7 @@ public class EncryptTextFragment
         super.onCreate(savedInstanceState);
         if (savedInstanceState == null) {
             mMessage = getArguments().getString(ARG_TEXT);
+            mReturnProcessTextAfterEncrypt = getArguments().getBoolean(ARG_RETURN_PROCESS_TEXT, false);
         }
 
         Preferences prefs = Preferences.getPreferences(getActivity());
@@ -149,6 +155,12 @@ public class EncryptTextFragment
         inflater.inflate(R.menu.encrypt_text_fragment, menu);
 
         menu.findItem(R.id.check_enable_compression).setChecked(mUseCompression);
+
+        if (mReturnProcessTextAfterEncrypt) {
+            menu.findItem(R.id.encrypt_paste).setVisible(true);
+            menu.findItem(R.id.encrypt_copy).setVisible(false);
+            menu.findItem(R.id.encrypt_share).setVisible(false);
+        }
     }
 
     @Override
@@ -164,13 +176,20 @@ public class EncryptTextFragment
 //                break;
 //            }
             case R.id.encrypt_copy: {
+                hideKeyboard();
                 mShareAfterEncrypt = false;
-                cryptoOperation();
+                cryptoOperation(new CryptoInputParcel(new Date()));
                 break;
             }
             case R.id.encrypt_share: {
+                hideKeyboard();
                 mShareAfterEncrypt = true;
-                cryptoOperation();
+                cryptoOperation(new CryptoInputParcel(new Date()));
+                break;
+            }
+            case R.id.encrypt_paste: {
+                hideKeyboard();
+                cryptoOperation(new CryptoInputParcel(new Date()));
                 break;
             }
             default: {
@@ -217,15 +236,17 @@ public class EncryptTextFragment
         data.setCleartextSignature(true);
 
         if (mUseCompression) {
-            data.setCompressionId(PgpConstants.sPreferredCompressionAlgorithms.get(0));
+            data.setCompressionAlgorithm(
+                    PgpSecurityConstants.OpenKeychainCompressionAlgorithmTags.USE_DEFAULT);
         } else {
-            data.setCompressionId(CompressionAlgorithmTags.UNCOMPRESSED);
+            data.setCompressionAlgorithm(
+                    PgpSecurityConstants.OpenKeychainCompressionAlgorithmTags.UNCOMPRESSED);
         }
         data.setHiddenRecipients(mHiddenRecipients);
         data.setSymmetricEncryptionAlgorithm(
-                PgpConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_PREFERRED);
+                PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_DEFAULT);
         data.setSignatureHashAlgorithm(
-                PgpConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_PREFERRED);
+                PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_DEFAULT);
 
         // Always use armor for messages
         data.setEnableAsciiArmorOutput(true);
@@ -265,30 +286,27 @@ public class EncryptTextFragment
         return data;
     }
 
-    private void copyToClipboard(byte[] resultBytes) {
-        ClipboardReflection.copyToClipboard(getActivity(), new String(resultBytes));
-    }
+    private void copyToClipboard(SignEncryptResult result) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
 
-    /**
-     * Create Intent Chooser but exclude OK's EncryptActivity.
-     */
-    private Intent sendWithChooserExcludingEncrypt(byte[] resultBytes) {
-        Intent prototype = createSendIntent(resultBytes);
-        String title = getString(R.string.title_share_message);
+        ClipboardManager clipMan = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipMan == null) {
+            Notify.create(activity, R.string.error_clipboard_copy, Style.ERROR).show();
+            return;
+        }
 
-        // we don't want to encrypt the encrypted, no inception ;)
-        String[] blacklist = new String[]{
-                Constants.PACKAGE_NAME + ".ui.EncryptTextActivity",
-                "org.thialfihar.android.apg.ui.EncryptActivity"
-        };
-
-        return new ShareHelper(getActivity()).createChooserExcluding(prototype, title, blacklist);
+        ClipData clip = ClipData.newPlainText(Constants.CLIPBOARD_LABEL, new String(result.getResultBytes()));
+        clipMan.setPrimaryClip(clip);
+        result.createNotify(activity).show();
     }
 
     private Intent createSendIntent(byte[] resultBytes) {
         Intent sendIntent;
         sendIntent = new Intent(Intent.ACTION_SEND);
-        sendIntent.setType(Constants.ENCRYPTED_TEXT_MIME);
+        sendIntent.setType(Constants.MIME_TYPE_TEXT);
         sendIntent.putExtra(Intent.EXTRA_TEXT, new String(resultBytes));
 
         EncryptActivity modeInterface = (EncryptActivity) getActivity();
@@ -316,18 +334,23 @@ public class EncryptTextFragment
     }
 
     @Override
-    public void onCryptoOperationSuccess(SignEncryptResult result) {
+    public void onQueuedOperationSuccess(SignEncryptResult result) {
+        super.onQueuedOperationSuccess(result);
+
+        hideKeyboard();
 
         if (mShareAfterEncrypt) {
             // Share encrypted message/file
-            startActivity(sendWithChooserExcludingEncrypt(result.getResultBytes()));
+            startActivity(Intent.createChooser(createSendIntent(result.getResultBytes()),
+                    getString(R.string.title_share_message)));
+        } else if (mReturnProcessTextAfterEncrypt) {
+            Intent resultIntent = new Intent();
+            resultIntent.putExtra(Intent.EXTRA_PROCESS_TEXT, new String(result.getResultBytes()));
+            getActivity().setResult(Activity.RESULT_OK, resultIntent);
+            getActivity().finish();
         } else {
             // Copy to clipboard
-            copyToClipboard(result.getResultBytes());
-            result.createNotify(getActivity()).show();
-            // Notify.create(EncryptTextActivity.this,
-            // R.string.encrypt_sign_clipboard_successful, Notify.Style.OK)
-            // .show(getSupportFragmentManager().findFragmentById(R.id.encrypt_text_fragment));
+            copyToClipboard(result);
         }
 
     }

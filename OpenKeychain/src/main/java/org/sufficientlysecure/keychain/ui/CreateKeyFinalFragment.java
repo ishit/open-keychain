@@ -20,35 +20,42 @@ package org.sufficientlysecure.keychain.ui;
 import android.app.Activity;
 import android.content.Intent;
 import android.database.Cursor;
-import android.net.Uri;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
+import android.view.View.OnClickListener;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.TextView;
 
-import org.spongycastle.bcpg.sig.KeyFlags;
+import org.bouncycastle.bcpg.sig.KeyFlags;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.operations.results.EditKeyResult;
-import org.sufficientlysecure.keychain.operations.results.ExportResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
+import org.sufficientlysecure.keychain.operations.results.UploadResult;
 import org.sufficientlysecure.keychain.pgp.KeyRing;
 import org.sufficientlysecure.keychain.pgp.exception.PgpKeyNotFoundException;
 import org.sufficientlysecure.keychain.provider.CachedPublicKeyRing;
 import org.sufficientlysecure.keychain.provider.KeychainContract;
 import org.sufficientlysecure.keychain.provider.ProviderHelper;
-import org.sufficientlysecure.keychain.service.ExportKeyringParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.Algorithm;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.ChangeUnlockParcel;
+import org.sufficientlysecure.keychain.service.UploadKeyringParcel;
+import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.ui.CreateKeyActivity.FragAction;
 import org.sufficientlysecure.keychain.ui.base.CryptoOperationHelper;
 import org.sufficientlysecure.keychain.util.Log;
+import org.sufficientlysecure.keychain.util.Passphrase;
 import org.sufficientlysecure.keychain.util.Preferences;
 
+import java.util.Date;
 import java.util.Iterator;
 
 public class CreateKeyFinalFragment extends Fragment {
@@ -60,17 +67,23 @@ public class CreateKeyFinalFragment extends Fragment {
     CheckBox mUploadCheckbox;
     View mBackButton;
     View mCreateButton;
-    TextView mEditText;
-    View mEditButton;
+    View mCustomKeyLayout;
+    Button mCustomKeyRevertButton;
 
     SaveKeyringParcel mSaveKeyringParcel;
 
-    private CryptoOperationHelper<ExportKeyringParcel, ExportResult> mUploadOpHelper;
+    private CryptoOperationHelper<UploadKeyringParcel, UploadResult> mUploadOpHelper;
     private CryptoOperationHelper<SaveKeyringParcel, EditKeyResult> mCreateOpHelper;
     private CryptoOperationHelper<SaveKeyringParcel, EditKeyResult> mMoveToCardOpHelper;
 
+    // queued results which may trigger delayed actions
+    private EditKeyResult mQueuedSaveKeyResult;
+    private OperationResult mQueuedFinishResult;
+    private EditKeyResult mQueuedDisplayResult;
+
     public static CreateKeyFinalFragment newInstance() {
         CreateKeyFinalFragment frag = new CreateKeyFinalFragment();
+        frag.setRetainInstance(true);
 
         Bundle args = new Bundle();
         frag.setArguments(args);
@@ -87,8 +100,8 @@ public class CreateKeyFinalFragment extends Fragment {
         mUploadCheckbox = (CheckBox) view.findViewById(R.id.create_key_upload);
         mBackButton = view.findViewById(R.id.create_key_back_button);
         mCreateButton = view.findViewById(R.id.create_key_next_button);
-        mEditText = (TextView) view.findViewById(R.id.create_key_edit_text);
-        mEditButton = view.findViewById(R.id.create_key_edit_button);
+        mCustomKeyLayout = view.findViewById(R.id.custom_key_layout);
+        mCustomKeyRevertButton = (Button) view.findViewById(R.id.revert_key_configuration);
 
         CreateKeyActivity createKeyActivity = (CreateKeyActivity) getActivity();
 
@@ -116,6 +129,13 @@ public class CreateKeyFinalFragment extends Fragment {
             }
         });
 
+        mCustomKeyRevertButton.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                keyConfigRevertToDefault();
+            }
+        });
+
         mBackButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -126,21 +146,44 @@ public class CreateKeyFinalFragment extends Fragment {
             }
         });
 
-        mEditButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent edit = new Intent(getActivity(), EditKeyActivity.class);
-                edit.putExtra(EditKeyActivity.EXTRA_SAVE_KEYRING_PARCEL, mSaveKeyringParcel);
-                startActivityForResult(edit, REQUEST_EDIT_KEY);
-            }
-        });
-
         // If this is a debug build, don't upload by default
         if (Constants.DEBUG) {
             mUploadCheckbox.setChecked(false);
         }
 
         return view;
+    }
+
+    @Override
+    public void onPrepareOptionsMenu(Menu menu) {
+        CreateKeyActivity createKeyActivity = (CreateKeyActivity) getActivity();
+
+        MenuItem editItem = menu.findItem(R.id.menu_create_key_edit);
+        editItem.setEnabled(!createKeyActivity.mCreateSecurityToken);
+
+        super.onPrepareOptionsMenu(menu);
+    }
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+        inflater.inflate(R.menu.create_key_final, menu);
+
+        super.onCreateOptionsMenu(menu, inflater);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+
+            case R.id.menu_create_key_edit:
+                Intent edit = new Intent(getActivity(), EditKeyActivity.class);
+                edit.putExtra(EditKeyActivity.EXTRA_SAVE_KEYRING_PARCEL, mSaveKeyringParcel);
+                startActivityForResult(edit, REQUEST_EDIT_KEY);
+                return true;
+
+            default:
+                return super.onOptionsItemSelected(item);
+        }
     }
 
     @Override
@@ -158,8 +201,9 @@ public class CreateKeyFinalFragment extends Fragment {
         switch (requestCode) {
             case REQUEST_EDIT_KEY: {
                 if (resultCode == Activity.RESULT_OK) {
-                    mSaveKeyringParcel = data.getParcelableExtra(EditKeyActivity.EXTRA_SAVE_KEYRING_PARCEL);
-                    mEditText.setText(R.string.create_key_custom);
+                    SaveKeyringParcel customKeyConfiguration =
+                            data.getParcelableExtra(EditKeyActivity.EXTRA_SAVE_KEYRING_PARCEL);
+                    keyConfigUseCustom(customKeyConfiguration);
                 }
                 break;
             }
@@ -169,54 +213,110 @@ public class CreateKeyFinalFragment extends Fragment {
         }
     }
 
+    public void keyConfigUseCustom(SaveKeyringParcel customKeyConfiguration) {
+        mSaveKeyringParcel = customKeyConfiguration;
+        mCustomKeyLayout.setVisibility(View.VISIBLE);
+    }
+
+    public void keyConfigRevertToDefault() {
+        Activity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
+        mSaveKeyringParcel = createDefaultSaveKeyringParcel((CreateKeyActivity) activity);
+        mCustomKeyLayout.setVisibility(View.GONE);
+    }
+
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
 
-        CreateKeyActivity createKeyActivity = (CreateKeyActivity) getActivity();
+        // We have a menu item to show in action bar.
+        setHasOptionsMenu(true);
 
         if (mSaveKeyringParcel == null) {
-            mSaveKeyringParcel = new SaveKeyringParcel();
+            keyConfigRevertToDefault();
+        }
 
-            if (createKeyActivity.mCreateYubiKey) {
-                mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
-                        2048, null, KeyFlags.SIGN_DATA | KeyFlags.CERTIFY_OTHER, 0L));
-                mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
-                        2048, null, KeyFlags.ENCRYPT_COMMS | KeyFlags.ENCRYPT_STORAGE, 0L));
-                mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
-                        2048, null, KeyFlags.AUTHENTICATION, 0L));
-                mEditText.setText(R.string.create_key_custom);
-                mEditButton.setEnabled(false);
-            } else {
-                mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
-                        4096, null, KeyFlags.CERTIFY_OTHER, 0L));
-                mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
-                        4096, null, KeyFlags.SIGN_DATA, 0L));
-                mSaveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
-                        4096, null, KeyFlags.ENCRYPT_COMMS | KeyFlags.ENCRYPT_STORAGE, 0L));
+        // handle queued actions
+
+        if (mQueuedFinishResult != null) {
+            finishWithResult(mQueuedFinishResult);
+            return;
+        }
+
+        if (mQueuedDisplayResult != null) {
+            try {
+                displayResult(mQueuedDisplayResult);
+            } finally {
+                // clear after operation, note that this may drop the operation if it didn't
+                // work when called from here!
+                mQueuedDisplayResult = null;
             }
-            String userId = KeyRing.createUserId(
-                    new KeyRing.UserId(createKeyActivity.mName, createKeyActivity.mEmail, null)
-            );
-            mSaveKeyringParcel.mAddUserIds.add(userId);
-            mSaveKeyringParcel.mChangePrimaryUserId = userId;
-            if (createKeyActivity.mAdditionalEmails != null
-                    && createKeyActivity.mAdditionalEmails.size() > 0) {
-                for (String email : createKeyActivity.mAdditionalEmails) {
-                    String thisUserId = KeyRing.createUserId(
-                            new KeyRing.UserId(createKeyActivity.mName, email, null)
-                    );
-                    mSaveKeyringParcel.mAddUserIds.add(thisUserId);
-                }
+        }
+
+        if (mQueuedSaveKeyResult != null) {
+            try {
+                uploadKey(mQueuedSaveKeyResult);
+            } finally {
+                // see above
+                mQueuedSaveKeyResult = null;
             }
-            mSaveKeyringParcel.mNewUnlock = createKeyActivity.mPassphrase != null
+        }
+
+    }
+
+    private static SaveKeyringParcel createDefaultSaveKeyringParcel(CreateKeyActivity createKeyActivity) {
+        SaveKeyringParcel saveKeyringParcel = new SaveKeyringParcel();
+
+        if (createKeyActivity.mCreateSecurityToken) {
+            saveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
+                    2048, null, KeyFlags.SIGN_DATA | KeyFlags.CERTIFY_OTHER, 0L));
+            saveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
+                    2048, null, KeyFlags.ENCRYPT_COMMS | KeyFlags.ENCRYPT_STORAGE, 0L));
+            saveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
+                    2048, null, KeyFlags.AUTHENTICATION, 0L));
+
+            // use empty passphrase
+            saveKeyringParcel.mNewUnlock = new ChangeUnlockParcel(new Passphrase(), null);
+        } else {
+            saveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
+                    4096, null, KeyFlags.CERTIFY_OTHER, 0L));
+            saveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
+                    4096, null, KeyFlags.SIGN_DATA, 0L));
+            saveKeyringParcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(Algorithm.RSA,
+                    4096, null, KeyFlags.ENCRYPT_COMMS | KeyFlags.ENCRYPT_STORAGE, 0L));
+
+            saveKeyringParcel.mNewUnlock = createKeyActivity.mPassphrase != null
                     ? new ChangeUnlockParcel(createKeyActivity.mPassphrase, null)
                     : null;
         }
+        String userId = KeyRing.createUserId(
+                new KeyRing.UserId(createKeyActivity.mName, createKeyActivity.mEmail, null)
+        );
+        saveKeyringParcel.mAddUserIds.add(userId);
+        saveKeyringParcel.mChangePrimaryUserId = userId;
+        if (createKeyActivity.mAdditionalEmails != null
+                && createKeyActivity.mAdditionalEmails.size() > 0) {
+            for (String email : createKeyActivity.mAdditionalEmails) {
+                String thisUserId = KeyRing.createUserId(
+                        new KeyRing.UserId(createKeyActivity.mName, email, null)
+                );
+                saveKeyringParcel.mAddUserIds.add(thisUserId);
+            }
+        }
+
+        return saveKeyringParcel;
     }
 
     private void createKey() {
-        final CreateKeyActivity createKeyActivity = (CreateKeyActivity) getActivity();
+        CreateKeyActivity activity = (CreateKeyActivity) getActivity();
+        if (activity == null) {
+            // this is a ui-triggered action, nvm if it fails while detached!
+            return;
+        }
+
+        final boolean createSecurityToken = activity.mCreateSecurityToken;
 
         CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult> createKeyCallback
                 = new CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult>() {
@@ -228,7 +328,7 @@ public class CreateKeyFinalFragment extends Fragment {
             @Override
             public void onCryptoOperationSuccess(EditKeyResult result) {
 
-                if (createKeyActivity.mCreateYubiKey) {
+                if (createSecurityToken) {
                     moveToCard(result);
                     return;
                 }
@@ -239,10 +339,7 @@ public class CreateKeyFinalFragment extends Fragment {
                     return;
                 }
 
-                Intent data = new Intent();
-                data.putExtra(OperationResult.EXTRA_RESULT, result);
-                getActivity().setResult(Activity.RESULT_OK, data);
-                getActivity().finish();
+                finishWithResult(result);
             }
 
             @Override
@@ -252,7 +349,7 @@ public class CreateKeyFinalFragment extends Fragment {
 
             @Override
             public void onCryptoOperationError(EditKeyResult result) {
-                result.createNotify(getActivity()).show();
+                displayResult(result);
             }
 
             @Override
@@ -261,33 +358,41 @@ public class CreateKeyFinalFragment extends Fragment {
             }
         };
 
-        mCreateOpHelper = new CryptoOperationHelper<>(this, createKeyCallback,
-                R.string.progress_building_key);
+        mCreateOpHelper = new CryptoOperationHelper<>(1, this, createKeyCallback, R.string.progress_building_key);
         mCreateOpHelper.cryptoOperation();
     }
 
+    private void displayResult(EditKeyResult result) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            mQueuedDisplayResult = result;
+            return;
+        }
+        result.createNotify(activity).show();
+    }
+
     private void moveToCard(final EditKeyResult saveKeyResult) {
-        final CreateKeyActivity createKeyActivity = (CreateKeyActivity) getActivity();
+        CreateKeyActivity activity = (CreateKeyActivity) getActivity();
 
         final SaveKeyringParcel changeKeyringParcel;
-        CachedPublicKeyRing key = (new ProviderHelper(getActivity()))
+        CachedPublicKeyRing key = (new ProviderHelper(activity))
                 .getCachedPublicKeyRing(saveKeyResult.mMasterKeyId);
         try {
             changeKeyringParcel = new SaveKeyringParcel(key.getMasterKeyId(), key.getFingerprint());
         } catch (PgpKeyNotFoundException e) {
-            Log.e(Constants.TAG, "Key that should be moved to YubiKey not found in database!");
+            Log.e(Constants.TAG, "Key that should be moved to Security Token not found in database!");
             return;
         }
 
         // define subkeys that should be moved to the card
-        Cursor cursor = getActivity().getContentResolver().query(
+        Cursor cursor = activity.getContentResolver().query(
                 KeychainContract.Keys.buildKeysUri(changeKeyringParcel.mMasterKeyId),
                 new String[]{KeychainContract.Keys.KEY_ID,}, null, null, null
         );
         try {
             while (cursor != null && cursor.moveToNext()) {
                 long subkeyId = cursor.getLong(0);
-                changeKeyringParcel.getOrCreateSubkeyChange(subkeyId).mMoveKeyToCard = true;
+                changeKeyringParcel.getOrCreateSubkeyChange(subkeyId).mMoveKeyToSecurityToken = true;
             }
         } finally {
             if (cursor != null) {
@@ -296,8 +401,8 @@ public class CreateKeyFinalFragment extends Fragment {
         }
 
         // define new PIN and Admin PIN for the card
-        changeKeyringParcel.mCardPin = createKeyActivity.mYubiKeyPin;
-        changeKeyringParcel.mCardAdminPin = createKeyActivity.mYubiKeyAdminPin;
+        changeKeyringParcel.mSecurityTokenPin = activity.mSecurityTokenPin;
+        changeKeyringParcel.mSecurityTokenAdminPin = activity.mSecurityTokenAdminPin;
 
         CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult> callback
                 = new CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult>() {
@@ -332,10 +437,7 @@ public class CreateKeyFinalFragment extends Fragment {
                     return;
                 }
 
-                Intent data = new Intent();
-                data.putExtra(OperationResult.EXTRA_RESULT, saveKeyResult);
-                getActivity().setResult(Activity.RESULT_OK, data);
-                getActivity().finish();
+                finishWithResult(saveKeyResult);
             }
 
             @Override
@@ -345,27 +447,33 @@ public class CreateKeyFinalFragment extends Fragment {
         };
 
 
-        mMoveToCardOpHelper = new CryptoOperationHelper<>(this, callback, R.string.progress_modify);
-        mMoveToCardOpHelper.cryptoOperation();
+        mMoveToCardOpHelper = new CryptoOperationHelper<>(2, this, callback, R.string.progress_modify);
+        mMoveToCardOpHelper.cryptoOperation(new CryptoInputParcel(new Date()));
     }
 
     private void uploadKey(final EditKeyResult saveKeyResult) {
-        // set data uri as path to keyring
-        final Uri blobUri = KeychainContract.KeyRings.buildUnifiedKeyRingUri(
-                saveKeyResult.mMasterKeyId);
-        // upload to favorite keyserver
-        final String keyserver = Preferences.getPreferences(getActivity()).getPreferredKeyserver();
+        Activity activity = getActivity();
+        // if the activity is gone at this point, there is nothing we can do!
+        if (activity == null) {
+            mQueuedSaveKeyResult = saveKeyResult;
+            return;
+        }
 
-        CryptoOperationHelper.Callback<ExportKeyringParcel, ExportResult> callback
-                = new CryptoOperationHelper.Callback<ExportKeyringParcel, ExportResult>() {
+        // set data uri as path to keyring
+        final long masterKeyId = saveKeyResult.mMasterKeyId;
+        // upload to favorite keyserver
+        final String keyserver = Preferences.getPreferences(activity).getPreferredKeyserver();
+
+        CryptoOperationHelper.Callback<UploadKeyringParcel, UploadResult> callback
+                = new CryptoOperationHelper.Callback<UploadKeyringParcel, UploadResult>() {
 
             @Override
-            public ExportKeyringParcel createOperationInput() {
-                return new ExportKeyringParcel(keyserver, blobUri);
+            public UploadKeyringParcel createOperationInput() {
+                return new UploadKeyringParcel(keyserver, masterKeyId);
             }
 
             @Override
-            public void onCryptoOperationSuccess(ExportResult result) {
+            public void onCryptoOperationSuccess(UploadResult result) {
                 handleResult(result);
             }
 
@@ -375,19 +483,13 @@ public class CreateKeyFinalFragment extends Fragment {
             }
 
             @Override
-            public void onCryptoOperationError(ExportResult result) {
+            public void onCryptoOperationError(UploadResult result) {
                 handleResult(result);
             }
 
-            public void handleResult(ExportResult result) {
-                // TODO: ExportOperation UPLOAD_KEYSERVER needs logs!
-                // TODO: then merge logs here!
-                //saveKeyResult.getLog().add(result, 0);
-
-                Intent data = new Intent();
-                data.putExtra(OperationResult.EXTRA_RESULT, saveKeyResult);
-                getActivity().setResult(Activity.RESULT_OK, data);
-                getActivity().finish();
+            public void handleResult(UploadResult result) {
+                saveKeyResult.getLog().add(result, 0);
+                finishWithResult(saveKeyResult);
             }
 
             @Override
@@ -396,9 +498,21 @@ public class CreateKeyFinalFragment extends Fragment {
             }
         };
 
-
-        mUploadOpHelper = new CryptoOperationHelper<>(this, callback, R.string.progress_uploading);
+        mUploadOpHelper = new CryptoOperationHelper<>(3, this, callback, R.string.progress_uploading);
         mUploadOpHelper.cryptoOperation();
+    }
+
+    public void finishWithResult(OperationResult result) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            mQueuedFinishResult = result;
+            return;
+        }
+
+        Intent data = new Intent();
+        data.putExtra(OperationResult.EXTRA_RESULT, result);
+        activity.setResult(Activity.RESULT_OK, data);
+        activity.finish();
     }
 
 }

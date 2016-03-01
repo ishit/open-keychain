@@ -17,16 +17,26 @@
 
 package org.sufficientlysecure.keychain.ui;
 
+
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.ContactsContract;
-import android.support.v4.app.LoaderManager;
+import android.support.v4.app.LoaderManager.LoaderCallbacks;
 import android.support.v4.content.CursorLoader;
 import android.support.v4.content.Loader;
 import android.support.v4.view.ViewPager;
+import android.support.v4.view.ViewPager.OnPageChangeListener;
+import android.view.ActionMode;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewPropertyAnimator;
+import android.view.animation.OvershootInterpolator;
 import android.widget.Toast;
 
 import com.astuetz.PagerSlidingTabStrip;
@@ -41,29 +51,32 @@ import org.sufficientlysecure.keychain.ui.adapter.PagerTabStripAdapter;
 import org.sufficientlysecure.keychain.ui.base.BaseActivity;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.util.ContactHelper;
-import org.sufficientlysecure.keychain.util.ExportHelper;
 import org.sufficientlysecure.keychain.util.Log;
 
 public class ViewKeyAdvActivity extends BaseActivity implements
-        LoaderManager.LoaderCallbacks<Cursor> {
+        LoaderCallbacks<Cursor>, OnPageChangeListener {
 
-    ExportHelper mExportHelper;
     ProviderHelper mProviderHelper;
 
     protected Uri mDataUri;
 
     public static final String EXTRA_SELECTED_TAB = "selected_tab";
-    public static final int TAB_SHARE = 0;
-    public static final int TAB_IDENTITIES = 1;
-    public static final int TAB_SUBKEYS = 2;
-    public static final int TAB_CERTS = 3;
-    public static final int TAB_KEYBASE = 4;
+    public static final int TAB_START = 0;
+    public static final int TAB_SHARE = 1;
+    public static final int TAB_IDENTITIES = 2;
+    public static final int TAB_SUBKEYS = 3;
+    public static final int TAB_CERTS = 4;
 
     // view
     private ViewPager mViewPager;
     private PagerSlidingTabStrip mSlidingTabLayout;
 
     private static final int LOADER_ID_UNIFIED = 0;
+    private ActionMode mActionMode;
+    private boolean mHasSecret;
+    private PagerTabStripAdapter mTabAdapter;
+    private boolean mActionIconShown;
+    private boolean[] mTabsWithActionMode;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,14 +89,10 @@ public class ViewKeyAdvActivity extends BaseActivity implements
             }
         });
 
-        mExportHelper = new ExportHelper(this);
         mProviderHelper = new ProviderHelper(this);
 
         mViewPager = (ViewPager) findViewById(R.id.pager);
         mSlidingTabLayout = (PagerSlidingTabStrip) findViewById(R.id.sliding_tab_layout);
-
-        Intent intent = getIntent();
-        int switchToTab = intent.getIntExtra(EXTRA_SELECTED_TAB, TAB_SHARE);
 
         mDataUri = getIntent().getData();
         if (mDataUri == null) {
@@ -92,7 +101,7 @@ public class ViewKeyAdvActivity extends BaseActivity implements
             return;
         }
         if (mDataUri.getHost().equals(ContactsContract.AUTHORITY)) {
-            mDataUri = ContactHelper.dataUriFromContactUri(this, mDataUri);
+            mDataUri = new ContactHelper(this).dataUriFromContactUri(mDataUri);
             if (mDataUri == null) {
                 Log.e(Constants.TAG, "Contact Data missing. Should be uri of key!");
                 Toast.makeText(this, R.string.error_contacts_key_id_missing, Toast.LENGTH_LONG).show();
@@ -106,9 +115,6 @@ public class ViewKeyAdvActivity extends BaseActivity implements
         getSupportLoaderManager().initLoader(LOADER_ID_UNIFIED, null, this);
 
         initTabs(mDataUri);
-
-        // switch to tab selected by extra
-        mViewPager.setCurrentItem(switchToTab);
     }
 
     @Override
@@ -117,36 +123,49 @@ public class ViewKeyAdvActivity extends BaseActivity implements
     }
 
     private void initTabs(Uri dataUri) {
-        PagerTabStripAdapter adapter = new PagerTabStripAdapter(this);
-        mViewPager.setAdapter(adapter);
+        mTabAdapter = new PagerTabStripAdapter(this);
+        mViewPager.setAdapter(mTabAdapter);
+
+        // keep track which of these are action mode enabled!
+        mTabsWithActionMode = new boolean[5];
+
+        mTabAdapter.addTab(ViewKeyAdvStartFragment.class,
+                null, getString(R.string.key_view_tab_start));
+        mTabsWithActionMode[0] = false;
 
         Bundle shareBundle = new Bundle();
-        shareBundle.putParcelable(ViewKeyAdvUserIdsFragment.ARG_DATA_URI, dataUri);
-        adapter.addTab(ViewKeyAdvShareFragment.class,
+        shareBundle.putParcelable(ViewKeyAdvShareFragment.ARG_DATA_URI, dataUri);
+        mTabAdapter.addTab(ViewKeyAdvShareFragment.class,
                 shareBundle, getString(R.string.key_view_tab_share));
+        mTabsWithActionMode[1] = false;
 
         Bundle userIdsBundle = new Bundle();
         userIdsBundle.putParcelable(ViewKeyAdvUserIdsFragment.ARG_DATA_URI, dataUri);
-        adapter.addTab(ViewKeyAdvUserIdsFragment.class,
+        mTabAdapter.addTab(ViewKeyAdvUserIdsFragment.class,
                 userIdsBundle, getString(R.string.section_user_ids));
+        mTabsWithActionMode[2] = true;
 
         Bundle keysBundle = new Bundle();
         keysBundle.putParcelable(ViewKeyAdvSubkeysFragment.ARG_DATA_URI, dataUri);
-        adapter.addTab(ViewKeyAdvSubkeysFragment.class,
+        mTabAdapter.addTab(ViewKeyAdvSubkeysFragment.class,
                 keysBundle, getString(R.string.key_view_tab_keys));
+        mTabsWithActionMode[3] = true;
 
         Bundle certsBundle = new Bundle();
         certsBundle.putParcelable(ViewKeyAdvCertsFragment.ARG_DATA_URI, dataUri);
-        adapter.addTab(ViewKeyAdvCertsFragment.class,
+        mTabAdapter.addTab(ViewKeyAdvCertsFragment.class,
                 certsBundle, getString(R.string.key_view_tab_certs));
-
-        Bundle trustBundle = new Bundle();
-        trustBundle.putParcelable(ViewKeyTrustFragment.ARG_DATA_URI, dataUri);
-        adapter.addTab(ViewKeyTrustFragment.class,
-                trustBundle, getString(R.string.key_view_tab_keybase));
+        mTabsWithActionMode[4] = false;
 
         // update layout after operations
         mSlidingTabLayout.setViewPager(mViewPager);
+        mSlidingTabLayout.setOnPageChangeListener(this);
+
+        // switch to tab selected by extra
+        Intent intent = getIntent();
+        int switchToTab = intent.getIntExtra(EXTRA_SELECTED_TAB, TAB_START);
+        mViewPager.setCurrentItem(switchToTab);
+
     }
 
     // These are the rows that we will retrieve.
@@ -157,7 +176,8 @@ public class ViewKeyAdvActivity extends BaseActivity implements
             KeychainContract.KeyRings.IS_REVOKED,
             KeychainContract.KeyRings.IS_EXPIRED,
             KeychainContract.KeyRings.VERIFIED,
-            KeychainContract.KeyRings.HAS_ANY_SECRET
+            KeychainContract.KeyRings.HAS_ANY_SECRET,
+            KeychainContract.KeyRings.FINGERPRINT,
     };
 
     static final int INDEX_MASTER_KEY_ID = 1;
@@ -166,6 +186,7 @@ public class ViewKeyAdvActivity extends BaseActivity implements
     static final int INDEX_IS_EXPIRED = 4;
     static final int INDEX_VERIFIED = 5;
     static final int INDEX_HAS_ANY_SECRET = 6;
+    static final int INDEX_FINGERPRINT = 7;
 
     @Override
     public Loader<Cursor> onCreateLoader(int id, Bundle args) {
@@ -199,11 +220,13 @@ public class ViewKeyAdvActivity extends BaseActivity implements
                         setTitle(R.string.user_id_no_name);
                     }
 
+                    byte[] fingerprint = data.getBlob(INDEX_FINGERPRINT);
+
                     // get key id from MASTER_KEY_ID
                     long masterKeyId = data.getLong(INDEX_MASTER_KEY_ID);
                     getSupportActionBar().setSubtitle(KeyFormattingUtils.beautifyKeyIdWithPrefix(this, masterKeyId));
 
-                    boolean isSecret = data.getInt(INDEX_HAS_ANY_SECRET) != 0;
+                    mHasSecret = data.getInt(INDEX_HAS_ANY_SECRET) != 0;
                     boolean isRevoked = data.getInt(INDEX_IS_REVOKED) > 0;
                     boolean isExpired = data.getInt(INDEX_IS_EXPIRED) != 0;
                     boolean isVerified = data.getInt(INDEX_VERIFIED) > 0;
@@ -211,18 +234,18 @@ public class ViewKeyAdvActivity extends BaseActivity implements
                     // Note: order is important
                     int color;
                     if (isRevoked || isExpired) {
-                        color = getResources().getColor(R.color.android_red_light);
-                    } else if (isSecret) {
-                        color = getResources().getColor(R.color.primary);
+                        color = getResources().getColor(R.color.key_flag_red);
+                    } else if (mHasSecret) {
+                        color = getResources().getColor(R.color.android_green_light);
                     } else {
                         if (isVerified) {
-                            color = getResources().getColor(R.color.primary);
+                            color = getResources().getColor(R.color.android_green_light);
                         } else {
-                            color = getResources().getColor(R.color.android_orange_light);
+                            color = getResources().getColor(R.color.key_flag_orange);
                         }
                     }
                     mToolbar.setBackgroundColor(color);
-                    mStatusBar.setBackgroundColor(color);
+                    mStatusBar.setBackgroundColor(ViewKeyActivity.getStatusBarBackgroundColor(color));
                     mSlidingTabLayout.setBackgroundColor(color);
 
                     break;
@@ -246,4 +269,85 @@ public class ViewKeyAdvActivity extends BaseActivity implements
             super.onActivityResult(requestCode, resultCode, data);
         }
     }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+
+        if (!mHasSecret) {
+            return false;
+        }
+
+        // always add the item, switch its visibility depending on fragment
+        getMenuInflater().inflate(R.menu.action_mode_edit, menu);
+        final MenuItem vActionModeItem = menu.findItem(R.id.menu_action_mode_edit);
+
+        boolean isCurrentActionFragment = mTabsWithActionMode[mViewPager.getCurrentItem()];
+
+        // if the state is as it should be, never mind
+        if (isCurrentActionFragment == mActionIconShown) {
+            return isCurrentActionFragment;
+        }
+
+        // show or hide accordingly
+        mActionIconShown = isCurrentActionFragment;
+        vActionModeItem.setEnabled(isCurrentActionFragment);
+        animateMenuItem(vActionModeItem, isCurrentActionFragment);
+
+        return true;
+    }
+
+    private void animateMenuItem(final MenuItem vEditSubkeys, final boolean animateShow) {
+
+        View actionView = LayoutInflater.from(this).inflate(R.layout.edit_icon, null);
+        vEditSubkeys.setActionView(actionView);
+        actionView.setTranslationX(animateShow ? 150 : 0);
+
+        ViewPropertyAnimator animator = actionView.animate();
+        animator.translationX(animateShow ? 0 : 150);
+        animator.setDuration(300);
+        animator.setInterpolator(new OvershootInterpolator(1.5f));
+        animator.setListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (!animateShow) {
+                    vEditSubkeys.setVisible(false);
+                }
+                vEditSubkeys.setActionView(null);
+            }
+        });
+        animator.start();
+
+    }
+
+    @Override
+    public void onActionModeStarted(final ActionMode mode) {
+        super.onActionModeStarted(mode);
+        mActionMode = mode;
+    }
+
+    @Override
+    public void onActionModeFinished(ActionMode mode) {
+        super.onActionModeFinished(mode);
+        mActionMode = null;
+    }
+
+    @Override
+    public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
+
+    }
+
+    @Override
+    public void onPageSelected(int position) {
+        if (mActionMode != null) {
+            mActionMode.finish();
+            mActionMode = null;
+        }
+        invalidateOptionsMenu();
+    }
+
+    @Override
+    public void onPageScrollStateChanged(int state) {
+
+    }
+
 }

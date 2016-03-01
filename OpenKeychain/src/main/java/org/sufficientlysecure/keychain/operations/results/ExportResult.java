@@ -19,32 +19,23 @@ package org.sufficientlysecure.keychain.operations.results;
 
 import android.os.Parcel;
 
-public class ExportResult extends OperationResult {
+import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
+import org.sufficientlysecure.keychain.service.input.RequiredInputParcel;
 
-    final int mOkPublic, mOkSecret;
+public class ExportResult extends InputPendingResult {
 
     public ExportResult(int result, OperationLog log) {
-        this(result, log, 0, 0);
-    }
-
-    public ExportResult(int result, OperationLog log, int okPublic, int okSecret) {
         super(result, log);
-        mOkPublic = okPublic;
-        mOkSecret = okSecret;
     }
 
     /** Construct from a parcel - trivial because we have no extra data. */
     public ExportResult(Parcel source) {
         super(source);
-        mOkPublic = source.readInt();
-        mOkSecret = source.readInt();
     }
 
     @Override
     public void writeToParcel(Parcel dest, int flags) {
         super.writeToParcel(dest, flags);
-        dest.writeInt(mOkPublic);
-        dest.writeInt(mOkSecret);
     }
 
     public static Creator<ExportResult> CREATOR = new Creator<ExportResult>() {

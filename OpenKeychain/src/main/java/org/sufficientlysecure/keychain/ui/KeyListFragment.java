@@ -24,18 +24,19 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
+import android.database.MatrixCursor;
+import android.database.MergeCursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
-import android.os.Messenger;
+import android.support.v4.app.FragmentActivity;
 import android.support.v4.app.LoaderManager;
 import android.support.v4.content.CursorLoader;
 import android.support.v4.content.Loader;
 import android.support.v4.view.MenuItemCompat;
 import android.support.v7.widget.SearchView;
+import android.text.TextUtils;
 import android.view.ActionMode;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -46,43 +47,42 @@ import android.view.View.OnClickListener;
 import android.view.ViewGroup;
 import android.widget.AbsListView.MultiChoiceModeListener;
 import android.widget.AdapterView;
+import android.widget.Button;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.ViewAnimator;
 
 import com.getbase.floatingactionbutton.FloatingActionButton;
 import com.getbase.floatingactionbutton.FloatingActionsMenu;
-
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.keyimport.ParcelableKeyRing;
+import org.sufficientlysecure.keychain.operations.results.BenchmarkResult;
 import org.sufficientlysecure.keychain.operations.results.ConsolidateResult;
-import org.sufficientlysecure.keychain.operations.results.DeleteResult;
 import org.sufficientlysecure.keychain.operations.results.ImportKeyResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.provider.KeychainContract;
 import org.sufficientlysecure.keychain.provider.KeychainContract.KeyRings;
 import org.sufficientlysecure.keychain.provider.KeychainDatabase;
 import org.sufficientlysecure.keychain.provider.ProviderHelper;
+import org.sufficientlysecure.keychain.service.BenchmarkInputParcel;
 import org.sufficientlysecure.keychain.service.ConsolidateInputParcel;
 import org.sufficientlysecure.keychain.service.ImportKeyringParcel;
-import org.sufficientlysecure.keychain.service.PassphraseCacheService;
-import org.sufficientlysecure.keychain.ui.base.CryptoOperationHelper;
-import org.sufficientlysecure.keychain.ui.dialog.DeleteKeyDialogFragment;
-import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.ui.adapter.KeyAdapter;
+import org.sufficientlysecure.keychain.ui.base.CryptoOperationHelper;
+import org.sufficientlysecure.keychain.ui.util.FormattingUtils;
+import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
+import org.sufficientlysecure.keychain.ui.util.ContentDescriptionHint;
 import org.sufficientlysecure.keychain.ui.util.Notify;
-import org.sufficientlysecure.keychain.ui.util.Notify.Style;
-import org.sufficientlysecure.keychain.util.ExportHelper;
 import org.sufficientlysecure.keychain.util.FabContainer;
 import org.sufficientlysecure.keychain.util.Log;
 import org.sufficientlysecure.keychain.util.Preferences;
+import se.emilsjolander.stickylistheaders.StickyListHeadersAdapter;
+import se.emilsjolander.stickylistheaders.StickyListHeadersListView;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-
-import se.emilsjolander.stickylistheaders.StickyListHeadersAdapter;
-import se.emilsjolander.stickylistheaders.StickyListHeadersListView;
 
 /**
  * Public key list with sticky list headers. It does _not_ extend ListFragment because it uses
@@ -93,10 +93,9 @@ public class KeyListFragment extends LoaderFragment
         LoaderManager.LoaderCallbacks<Cursor>, FabContainer,
         CryptoOperationHelper.Callback<ImportKeyringParcel, ImportKeyResult> {
 
-    static final int REQUEST_REPEAT_PASSPHRASE = 1;
-    static final int REQUEST_ACTION = 2;
-
-    ExportHelper mExportHelper;
+    static final int REQUEST_ACTION = 1;
+    private static final int REQUEST_DELETE = 2;
+    private static final int REQUEST_VIEW_KEY = 3;
 
     private KeyListAdapter mAdapter;
     private StickyListHeadersListView mStickyList;
@@ -104,6 +103,8 @@ public class KeyListFragment extends LoaderFragment
     // saves the mode object for multiselect, needed for reset at some point
     private ActionMode mActionMode = null;
 
+    private Button vSearchButton;
+    private ViewAnimator vSearchContainer;
     private String mQuery;
 
     private FloatingActionsMenu mFab;
@@ -115,18 +116,6 @@ public class KeyListFragment extends LoaderFragment
 
     // for ConsolidateOperation
     private CryptoOperationHelper<ConsolidateInputParcel, ConsolidateResult> mConsolidateOpHelper;
-
-    // This ids for multiple key export.
-    private ArrayList<Long> mIdsForRepeatAskPassphrase;
-    // This index for remembering the number of master key.
-    private int mIndex;
-
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        mExportHelper = new ExportHelper(getActivity());
-    }
 
     /**
      * Load custom layout with StickyListView from library
@@ -180,7 +169,9 @@ public class KeyListFragment extends LoaderFragment
         super.onActivityCreated(savedInstanceState);
 
         // show app name instead of "keys" from nav drawer
-        getActivity().setTitle(R.string.app_name);
+        final FragmentActivity activity = getActivity();
+
+        activity.setTitle(R.string.app_name);
 
         mStickyList.setOnItemClickListener(this);
         mStickyList.setAreHeadersSticky(true);
@@ -189,7 +180,7 @@ public class KeyListFragment extends LoaderFragment
 
         // Adds an empty footer view so that the Floating Action Button won't block content
         // in last few rows.
-        View footer = new View(getActivity());
+        View footer = new View(activity);
 
         int spacing = (int) android.util.TypedValue.applyDimension(
                 android.util.TypedValue.COMPLEX_UNIT_DIP, 72, getResources().getDisplayMetrics()
@@ -213,7 +204,7 @@ public class KeyListFragment extends LoaderFragment
 
             @Override
             public boolean onCreateActionMode(ActionMode mode, Menu menu) {
-                android.view.MenuInflater inflater = getActivity().getMenuInflater();
+                android.view.MenuInflater inflater = activity.getMenuInflater();
                 inflater.inflate(R.menu.key_list_multi, menu);
                 mActionMode = mode;
                 return true;
@@ -238,19 +229,7 @@ public class KeyListFragment extends LoaderFragment
                     }
                     case R.id.menu_key_list_multi_delete: {
                         ids = mAdapter.getCurrentSelectedMasterKeyIds();
-                        showDeleteKeyDialog(mode, ids, mAdapter.isAnySecretSelected());
-                        break;
-                    }
-                    case R.id.menu_key_list_multi_export: {
-                        ids = mAdapter.getCurrentSelectedMasterKeyIds();
-                        showMultiExportDialog(ids);
-                        break;
-                    }
-                    case R.id.menu_key_list_multi_select_all: {
-                        // select all
-                        for (int i = 0; i < mAdapter.getCount(); i++) {
-                            mStickyList.setItemChecked(i, true);
-                        }
+                        showDeleteKeyDialog(ids, mAdapter.isAnySecretSelected());
                         break;
                     }
                 }
@@ -265,7 +244,7 @@ public class KeyListFragment extends LoaderFragment
 
             @Override
             public void onItemCheckedStateChanged(ActionMode mode, int position, long id,
-                                                  boolean checked) {
+                    boolean checked) {
                 if (checked) {
                     mAdapter.setNewSelection(position, true);
                 } else {
@@ -285,8 +264,21 @@ public class KeyListFragment extends LoaderFragment
         // Start out with a progress indicator.
         setContentShown(false);
 
+        // this view is made visible if no data is available
+        mStickyList.setEmptyView(activity.findViewById(R.id.key_list_empty));
+
+        // click on search button (in empty view) starts query for search string
+        vSearchContainer = (ViewAnimator) activity.findViewById(R.id.search_container);
+        vSearchButton = (Button) activity.findViewById(R.id.search_button);
+        vSearchButton.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startSearchForQuery();
+            }
+        });
+
         // Create an empty adapter we will use to display the loaded data.
-        mAdapter = new KeyListAdapter(getActivity(), null, 0);
+        mAdapter = new KeyListAdapter(activity, null, 0);
         mStickyList.setAdapter(mAdapter);
 
         // Prepare the loader. Either re-connect with an existing one,
@@ -294,35 +286,35 @@ public class KeyListFragment extends LoaderFragment
         getLoaderManager().initLoader(0, null, this);
     }
 
-    static final String ORDER =
-            KeyRings.HAS_ANY_SECRET + " DESC, UPPER(" + KeyRings.USER_ID + ") ASC";
+    private void startSearchForQuery() {
+        Activity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
 
+        Intent searchIntent = new Intent(activity, ImportKeysActivity.class);
+        searchIntent.putExtra(ImportKeysActivity.EXTRA_QUERY, mQuery);
+        searchIntent.setAction(ImportKeysActivity.ACTION_IMPORT_KEY_FROM_KEYSERVER);
+        startActivity(searchIntent);
+    }
+
+    static final String ORDER =
+            KeyRings.HAS_ANY_SECRET + " DESC, " + KeyRings.USER_ID + " COLLATE NOCASE ASC";
 
     @Override
     public Loader<Cursor> onCreateLoader(int id, Bundle args) {
         // This is called when a new Loader needs to be created. This
         // sample only has one Loader, so we don't care about the ID.
-        Uri baseUri = KeyRings.buildUnifiedKeyRingsUri();
-        String where = null;
-        String whereArgs[] = null;
-        if (mQuery != null) {
-            String[] words = mQuery.trim().split("\\s+");
-            whereArgs = new String[words.length];
-            for (int i = 0; i < words.length; ++i) {
-                if (where == null) {
-                    where = "";
-                } else {
-                    where += " AND ";
-                }
-                where += KeyRings.USER_ID + " LIKE ?";
-                whereArgs[i] = "%" + words[i] + "%";
-            }
+        Uri uri;
+        if (!TextUtils.isEmpty(mQuery)) {
+            uri = KeyRings.buildUnifiedKeyRingsFindByUserIdUri(mQuery);
+        } else {
+            uri = KeyRings.buildUnifiedKeyRingsUri();
         }
 
         // Now create and return a CursorLoader that will take care of
         // creating a Cursor for the data being displayed.
-        return new CursorLoader(getActivity(), baseUri,
-                KeyListAdapter.PROJECTION, where, whereArgs, ORDER);
+        return new CursorLoader(getActivity(), uri, KeyListAdapter.PROJECTION, null, null, ORDER);
     }
 
     @Override
@@ -330,12 +322,23 @@ public class KeyListFragment extends LoaderFragment
         // Swap the new cursor in. (The framework will take care of closing the
         // old cursor once we return.)
         mAdapter.setSearchQuery(mQuery);
+
+        if (data != null && (mQuery == null || TextUtils.isEmpty(mQuery))) {
+            boolean isSecret = data.moveToFirst() && data.getInt(KeyListAdapter.INDEX_HAS_ANY_SECRET) != 0;
+            if (!isSecret) {
+                MatrixCursor headerCursor = new MatrixCursor(KeyListAdapter.PROJECTION);
+                Long[] row = new Long[KeyListAdapter.PROJECTION.length];
+                row[KeyListAdapter.INDEX_HAS_ANY_SECRET] = 1L;
+                row[KeyListAdapter.INDEX_MASTER_KEY_ID] = 0L;
+                headerCursor.addRow(row);
+
+                Cursor dataCursor = data;
+                data = new MergeCursor(new Cursor[] {
+                        headerCursor, dataCursor
+                });
+            }
+        }
         mAdapter.swapCursor(data);
-
-        mStickyList.setAdapter(mAdapter);
-
-        // this view is made visible if no data is available
-        mStickyList.setEmptyView(getActivity().findViewById(R.id.key_list_empty));
 
         // end action mode, if any
         if (mActionMode != null) {
@@ -366,7 +369,7 @@ public class KeyListFragment extends LoaderFragment
         Intent viewIntent = new Intent(getActivity(), ViewKeyActivity.class);
         viewIntent.setData(
                 KeyRings.buildGenericKeyRingUri(mAdapter.getMasterKeyId(position)));
-        startActivity(viewIntent);
+        startActivityForResult(viewIntent, REQUEST_VIEW_KEY);
     }
 
     protected void encrypt(ActionMode mode, long[] masterKeyIds) {
@@ -384,38 +387,15 @@ public class KeyListFragment extends LoaderFragment
      *
      * @param hasSecret must contain whether the list of masterKeyIds contains a secret key or not
      */
-    public void showDeleteKeyDialog(final ActionMode mode, long[] masterKeyIds, boolean hasSecret) {
-        // Can only work on singular secret keys
-        if (hasSecret && masterKeyIds.length > 1) {
-            Notify.create(getActivity(), R.string.secret_cannot_multiple,
-                    Notify.Style.ERROR).show();
-            return;
+    public void showDeleteKeyDialog(long[] masterKeyIds, boolean hasSecret) {
+        Intent intent = new Intent(getActivity(), DeleteKeyDialogActivity.class);
+        intent.putExtra(DeleteKeyDialogActivity.EXTRA_DELETE_MASTER_KEY_IDS, masterKeyIds);
+        intent.putExtra(DeleteKeyDialogActivity.EXTRA_HAS_SECRET, hasSecret);
+        if (hasSecret) {
+            intent.putExtra(DeleteKeyDialogActivity.EXTRA_KEYSERVER,
+                    Preferences.getPreferences(getActivity()).getPreferredKeyserver());
         }
-
-        // Message is received after key is deleted
-        Handler returnHandler = new Handler() {
-            @Override
-            public void handleMessage(Message message) {
-                if (message.arg1 == DeleteKeyDialogFragment.MESSAGE_OKAY) {
-                    Bundle data = message.getData();
-                    if (data != null) {
-                        DeleteResult result = data.getParcelable(DeleteResult.EXTRA_RESULT);
-                        if (result != null) {
-                            result.createNotify(getActivity()).show();
-                        }
-                    }
-                    mode.finish();
-                }
-            }
-        };
-
-        // Create a new Messenger for the communication back
-        Messenger messenger = new Messenger(returnHandler);
-
-        DeleteKeyDialogFragment deleteKeyDialog = DeleteKeyDialogFragment.newInstance(messenger,
-                masterKeyIds);
-
-        deleteKeyDialog.show(getActivity().getSupportFragmentManager(), "deleteKeyDialog");
+        startActivityForResult(intent, REQUEST_DELETE);
     }
 
 
@@ -425,6 +405,7 @@ public class KeyListFragment extends LoaderFragment
 
         if (Constants.DEBUG) {
             menu.findItem(R.id.menu_key_list_debug_cons).setVisible(true);
+            menu.findItem(R.id.menu_key_list_debug_bench).setVisible(true);
             menu.findItem(R.id.menu_key_list_debug_read).setVisible(true);
             menu.findItem(R.id.menu_key_list_debug_write).setVisible(true);
             menu.findItem(R.id.menu_key_list_debug_first_time).setVisible(true);
@@ -470,16 +451,8 @@ public class KeyListFragment extends LoaderFragment
                 createKey();
                 return true;
 
-            case R.id.menu_key_list_export:
-                mExportHelper.showExportKeysDialog(null, Constants.Path.APP_DIR_FILE, true);
-                return true;
-
             case R.id.menu_key_list_update_all_keys:
                 updateAllKeys();
-                return true;
-
-            case R.id.menu_key_list_debug_cons:
-                consolidate();
                 return true;
 
             case R.id.menu_key_list_debug_read:
@@ -512,6 +485,14 @@ public class KeyListFragment extends LoaderFragment
                 getActivity().finish();
                 return true;
 
+            case R.id.menu_key_list_debug_cons:
+                consolidate();
+                return true;
+
+            case R.id.menu_key_list_debug_bench:
+                benchmark();
+                return true;
+
             default:
                 return super.onOptionsItemSelected(item);
         }
@@ -525,17 +506,25 @@ public class KeyListFragment extends LoaderFragment
     @Override
     public boolean onQueryTextChange(String s) {
         Log.d(Constants.TAG, "onQueryTextChange s:" + s);
-        // Called when the action bar search text has changed.  Update
-        // the search filter, and restart the loader to do a new query
-        // with this filter.
+        // Called when the action bar search text has changed.  Update the
+        // search filter, and restart the loader to do a new query with this
+        // filter.
         // If the nav drawer is opened, onQueryTextChange("") is executed.
         // This hack prevents restarting the loader.
-        // TODO: better way to fix this?
-        String tmp = (mQuery == null) ? "" : mQuery;
-        if (!s.equals(tmp)) {
+        if (!s.equals(mQuery)) {
             mQuery = s;
             getLoaderManager().restartLoader(0, null, this);
         }
+
+        if (s.length() > 2) {
+            vSearchButton.setText(getString(R.string.btn_search_for_query, mQuery));
+            vSearchContainer.setDisplayedChild(1);
+            vSearchContainer.setVisibility(View.VISIBLE);
+        } else {
+            vSearchContainer.setDisplayedChild(0);
+            vSearchContainer.setVisibility(View.GONE);
+        }
+
         return true;
     }
 
@@ -577,7 +566,7 @@ public class KeyListFragment extends LoaderFragment
         );
 
         if (cursor == null) {
-            Notify.create(activity, R.string.error_loading_keys, Style.ERROR);
+            Notify.create(activity, R.string.error_loading_keys, Notify.Style.ERROR);
             return;
         }
 
@@ -586,7 +575,7 @@ public class KeyListFragment extends LoaderFragment
             while (cursor.moveToNext()) {
                 byte[] blob = cursor.getBlob(0);//fingerprint column is 0
                 String fingerprint = KeyFormattingUtils.convertFingerprintToHex(blob);
-                ParcelableKeyRing keyEntry = new ParcelableKeyRing(fingerprint, null, null);
+                ParcelableKeyRing keyEntry = new ParcelableKeyRing(fingerprint, null);
                 keyList.add(keyEntry);
             }
             mKeyList = keyList;
@@ -595,15 +584,10 @@ public class KeyListFragment extends LoaderFragment
         }
 
         // search config
-        {
-            Preferences prefs = Preferences.getPreferences(getActivity());
-            Preferences.CloudSearchPrefs cloudPrefs =
-                    new Preferences.CloudSearchPrefs(true, true, prefs.getPreferredKeyserver());
-            mKeyserver = cloudPrefs.keyserver;
-        }
+        mKeyserver = Preferences.getPreferences(getActivity()).getPreferredKeyserver();
 
-        mImportOpHelper = new CryptoOperationHelper<>(this,
-                this, R.string.progress_updating);
+        mImportOpHelper = new CryptoOperationHelper<>(1, this, this, R.string.progress_updating);
+        mImportOpHelper.setProgressCancellable(true);
         mImportOpHelper.cryptoOperation();
     }
 
@@ -639,43 +623,46 @@ public class KeyListFragment extends LoaderFragment
         };
 
         mConsolidateOpHelper =
-                new CryptoOperationHelper<>(this, callback, R.string.progress_importing);
+                new CryptoOperationHelper<>(2, this, callback, R.string.progress_importing);
 
         mConsolidateOpHelper.cryptoOperation();
     }
 
-    private void showMultiExportDialog(long[] masterKeyIds) {
-        mIdsForRepeatAskPassphrase = new ArrayList<>();
-        for (long id : masterKeyIds) {
-            try {
-                if (PassphraseCacheService.getCachedPassphrase(
-                        getActivity(), id, id) == null) {
-                    mIdsForRepeatAskPassphrase.add(id);
-                }
-            } catch (PassphraseCacheService.KeyNotFoundException e) {
-                // This happens when the master key is stripped
-                // and ignore this key.
-            }
-        }
-        mIndex = 0;
-        if (mIdsForRepeatAskPassphrase.size() != 0) {
-            startPassphraseActivity();
-            return;
-        }
-        long[] idsForMultiExport = new long[mIdsForRepeatAskPassphrase.size()];
-        for (int i = 0; i < mIdsForRepeatAskPassphrase.size(); ++i) {
-            idsForMultiExport[i] = mIdsForRepeatAskPassphrase.get(i);
-        }
-        mExportHelper.showExportKeysDialog(idsForMultiExport,
-                Constants.Path.APP_DIR_FILE,
-                mAdapter.isAnySecretSelected());
-    }
+    private void benchmark() {
 
-    private void startPassphraseActivity() {
-        Intent intent = new Intent(getActivity(), PassphraseDialogActivity.class);
-        long masterKeyId = mIdsForRepeatAskPassphrase.get(mIndex++);
-        intent.putExtra(PassphraseDialogActivity.EXTRA_SUBKEY_ID, masterKeyId);
-        startActivityForResult(intent, REQUEST_REPEAT_PASSPHRASE);
+        CryptoOperationHelper.Callback<BenchmarkInputParcel, BenchmarkResult> callback
+                = new CryptoOperationHelper.Callback<BenchmarkInputParcel, BenchmarkResult>() {
+
+            @Override
+            public BenchmarkInputParcel createOperationInput() {
+                return new BenchmarkInputParcel(); // we want to perform a full consolidate
+            }
+
+            @Override
+            public void onCryptoOperationSuccess(BenchmarkResult result) {
+                result.createNotify(getActivity()).show();
+            }
+
+            @Override
+            public void onCryptoOperationCancelled() {
+
+            }
+
+            @Override
+            public void onCryptoOperationError(BenchmarkResult result) {
+                result.createNotify(getActivity()).show();
+            }
+
+            @Override
+            public boolean onCryptoSetProgress(String msg, int progress, int max) {
+                return false;
+            }
+        };
+
+        CryptoOperationHelper opHelper =
+                new CryptoOperationHelper<>(2, this, callback, R.string.progress_importing);
+
+        opHelper.cryptoOperation();
     }
 
     @Override
@@ -688,31 +675,37 @@ public class KeyListFragment extends LoaderFragment
             mConsolidateOpHelper.handleActivityResult(requestCode, resultCode, data);
         }
 
-        if (requestCode == REQUEST_REPEAT_PASSPHRASE) {
-            if (resultCode != Activity.RESULT_OK) {
-                return;
-            }
-            if (mIndex < mIdsForRepeatAskPassphrase.size()) {
-                startPassphraseActivity();
-                return;
-            }
-            long[] idsForMultiExport = new long[mIdsForRepeatAskPassphrase.size()];
-            for (int i = 0; i < mIdsForRepeatAskPassphrase.size(); ++i) {
-                idsForMultiExport[i] = mIdsForRepeatAskPassphrase.get(i);
-            }
-            mExportHelper.showExportKeysDialog(idsForMultiExport,
-                    Constants.Path.APP_DIR_FILE,
-                    mAdapter.isAnySecretSelected());
-        }
+        switch (requestCode) {
+            case REQUEST_DELETE:
+                if (mActionMode != null) {
+                    mActionMode.finish();
+                }
+                if (data != null && data.hasExtra(OperationResult.EXTRA_RESULT)) {
+                    OperationResult result = data.getParcelableExtra(OperationResult.EXTRA_RESULT);
+                    result.createNotify(getActivity()).show();
+                } else {
+                    super.onActivityResult(requestCode, resultCode, data);
+                }
+                break;
 
-        if (requestCode == REQUEST_ACTION) {
-            // if a result has been returned, display a notify
-            if (data != null && data.hasExtra(OperationResult.EXTRA_RESULT)) {
-                OperationResult result = data.getParcelableExtra(OperationResult.EXTRA_RESULT);
-                result.createNotify(getActivity()).show();
-            } else {
-                super.onActivityResult(requestCode, resultCode, data);
-            }
+            case REQUEST_ACTION:
+                // if a result has been returned, display a notify
+                if (data != null && data.hasExtra(OperationResult.EXTRA_RESULT)) {
+                    OperationResult result = data.getParcelableExtra(OperationResult.EXTRA_RESULT);
+                    result.createNotify(getActivity()).show();
+                } else {
+                    super.onActivityResult(requestCode, resultCode, data);
+                }
+                break;
+
+            case REQUEST_VIEW_KEY:
+                if (data != null && data.hasExtra(OperationResult.EXTRA_RESULT)) {
+                    OperationResult result = data.getParcelableExtra(OperationResult.EXTRA_RESULT);
+                    result.createNotify(getActivity()).show();
+                } else {
+                    super.onActivityResult(requestCode, resultCode, data);
+                }
+                break;
         }
     }
 
@@ -763,8 +756,11 @@ public class KeyListFragment extends LoaderFragment
 
         private HashMap<Integer, Boolean> mSelection = new HashMap<>();
 
+        private Context mContext;
+
         public KeyListAdapter(Context context, Cursor c, int flags) {
             super(context, c, flags);
+            mContext = context;
         }
 
         @Override
@@ -774,6 +770,8 @@ public class KeyListFragment extends LoaderFragment
             final KeyItemViewHolder holder = (KeyItemViewHolder) view.getTag();
 
             holder.mSlinger.setVisibility(View.VISIBLE);
+
+            ContentDescriptionHint.setup(holder.mSlingerButton);
             holder.mSlingerButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -793,15 +791,40 @@ public class KeyListFragment extends LoaderFragment
             // let the adapter handle setting up the row views
             View v = super.getView(position, convertView, parent);
 
+            int colorEmphasis = FormattingUtils.getColorFromAttr(mContext, R.attr.colorEmphasis);
+
             if (mSelection.get(position) != null) {
                 // selected position color
-                v.setBackgroundColor(parent.getResources().getColor(R.color.emphasis));
+                v.setBackgroundColor(colorEmphasis);
             } else {
                 // default color
                 v.setBackgroundColor(Color.TRANSPARENT);
             }
 
             return v;
+        }
+
+        @Override
+        public void bindView(View view, Context context, Cursor cursor) {
+            boolean isSecret = cursor.getInt(INDEX_HAS_ANY_SECRET) != 0;
+            long masterKeyId = cursor.getLong(INDEX_MASTER_KEY_ID);
+            if (isSecret && masterKeyId == 0L) {
+
+                // sort of a hack: if this item isn't enabled, we make it clickable
+                // to intercept its click events
+                view.setClickable(true);
+
+                KeyItemViewHolder h = (KeyItemViewHolder) view.getTag();
+                h.setDummy(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        createKey();
+                    }
+                });
+                return;
+            }
+
+            super.bindView(view, context, cursor);
         }
 
         private class HeaderViewHolder {
@@ -842,6 +865,10 @@ public class KeyListFragment extends LoaderFragment
             if (mCursor.getInt(INDEX_HAS_ANY_SECRET) != 0) {
                 { // set contact count
                     int num = mCursor.getCount();
+                    // If this is a dummy secret key, subtract one
+                    if (mCursor.getLong(INDEX_MASTER_KEY_ID) == 0L) {
+                        num -= 1;
+                    }
                     String contactsTotal = mContext.getResources().getQuantityString(R.plurals.n_keys, num, num);
                     holder.mCount.setText(contactsTotal);
                     holder.mCount.setVisibility(View.VISIBLE);
@@ -900,8 +927,9 @@ public class KeyListFragment extends LoaderFragment
 
         public boolean isAnySecretSelected() {
             for (int pos : mSelection.keySet()) {
-                if (isSecretAvailable(pos))
+                if (isSecretAvailable(pos)) {
                     return true;
+                }
             }
             return false;
         }

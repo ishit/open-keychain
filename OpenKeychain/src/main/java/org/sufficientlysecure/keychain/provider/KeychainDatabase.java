@@ -34,6 +34,7 @@ import org.sufficientlysecure.keychain.provider.KeychainContract.ApiAppsColumns;
 import org.sufficientlysecure.keychain.provider.KeychainContract.CertsColumns;
 import org.sufficientlysecure.keychain.provider.KeychainContract.KeyRingsColumns;
 import org.sufficientlysecure.keychain.provider.KeychainContract.KeysColumns;
+import org.sufficientlysecure.keychain.provider.KeychainContract.UpdatedKeysColumns;
 import org.sufficientlysecure.keychain.provider.KeychainContract.UserPacketsColumns;
 import org.sufficientlysecure.keychain.ui.ConsolidateDialogActivity;
 import org.sufficientlysecure.keychain.util.Log;
@@ -53,7 +54,7 @@ import java.io.IOException;
  */
 public class KeychainDatabase extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "openkeychain.db";
-    private static final int DATABASE_VERSION = 10;
+    private static final int DATABASE_VERSION = 14;
     static Boolean apgHack = false;
     private Context mContext;
 
@@ -61,6 +62,7 @@ public class KeychainDatabase extends SQLiteOpenHelper {
         String KEY_RINGS_PUBLIC = "keyrings_public";
         String KEY_RINGS_SECRET = "keyrings_secret";
         String KEYS = "keys";
+        String UPDATED_KEYS = "updated_keys";
         String USER_PACKETS = "user_packets";
         String CERTS = "certs";
         String API_APPS = "api_apps";
@@ -77,7 +79,7 @@ public class KeychainDatabase extends SQLiteOpenHelper {
     private static final String CREATE_KEYRINGS_SECRET =
             "CREATE TABLE IF NOT EXISTS keyrings_secret ("
                     + KeyRingsColumns.MASTER_KEY_ID + " INTEGER PRIMARY KEY,"
-                    + KeyRingsColumns.KEY_RING_DATA + " BLOB,"
+                    + KeyRingsColumns.KEY_RING_DATA + " BLOB, "
                     + "FOREIGN KEY(" + KeyRingsColumns.MASTER_KEY_ID + ") "
                         + "REFERENCES keyrings_public(" + KeyRingsColumns.MASTER_KEY_ID + ") ON DELETE CASCADE"
             + ")";
@@ -144,6 +146,14 @@ public class KeychainDatabase extends SQLiteOpenHelper {
                     + Tables.USER_PACKETS + "(" + UserPacketsColumns.MASTER_KEY_ID + ", " + UserPacketsColumns.RANK + ") ON DELETE CASCADE"
             + ")";
 
+    private static final String CREATE_UPDATE_KEYS =
+            "CREATE TABLE IF NOT EXISTS " + Tables.UPDATED_KEYS + " ("
+                    + UpdatedKeysColumns.MASTER_KEY_ID + " INTEGER PRIMARY KEY, "
+                    + UpdatedKeysColumns.LAST_UPDATED + " INTEGER, "
+                    + "FOREIGN KEY(" + UpdatedKeysColumns.MASTER_KEY_ID + ") REFERENCES "
+                    + Tables.KEY_RINGS_PUBLIC + "(" + KeyRingsColumns.MASTER_KEY_ID + ") ON DELETE CASCADE"
+                    + ")";
+
     private static final String CREATE_API_APPS =
             "CREATE TABLE IF NOT EXISTS " + Tables.API_APPS + " ("
                 + BaseColumns._ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -206,9 +216,17 @@ public class KeychainDatabase extends SQLiteOpenHelper {
         db.execSQL(CREATE_KEYS);
         db.execSQL(CREATE_USER_PACKETS);
         db.execSQL(CREATE_CERTS);
+        db.execSQL(CREATE_UPDATE_KEYS);
         db.execSQL(CREATE_API_APPS);
         db.execSQL(CREATE_API_APPS_ACCOUNTS);
         db.execSQL(CREATE_API_APPS_ALLOWED_KEYS);
+
+        db.execSQL("CREATE INDEX keys_by_rank ON keys (" + KeysColumns.RANK + ");");
+        db.execSQL("CREATE INDEX uids_by_rank ON user_packets (" + UserPacketsColumns.RANK + ", "
+                + UserPacketsColumns.USER_ID + ", " + UserPacketsColumns.MASTER_KEY_ID + ");");
+        db.execSQL("CREATE INDEX verified_certs ON certs ("
+                + CertsColumns.VERIFIED + ", " + CertsColumns.MASTER_KEY_ID + ");");
+
     }
 
     @Override
@@ -274,6 +292,20 @@ public class KeychainDatabase extends SQLiteOpenHelper {
                 db.execSQL(CREATE_CERTS);
             case 10:
                 // do nothing here, just consolidate
+            case 11:
+                // fix problems in database, see #1402 for details
+                // https://github.com/open-keychain/open-keychain/issues/1402
+                db.execSQL("DELETE FROM api_accounts WHERE key_id BETWEEN 0 AND 3");
+            case 12:
+                db.execSQL(CREATE_UPDATE_KEYS);
+            case 13:
+                // do nothing here, just consolidate
+            case 14:
+                db.execSQL("CREATE INDEX keys_by_rank ON keys (" + KeysColumns.RANK + ");");
+                db.execSQL("CREATE INDEX uids_by_rank ON user_packets (" + UserPacketsColumns.RANK + ", "
+                        + UserPacketsColumns.USER_ID + ", " + UserPacketsColumns.MASTER_KEY_ID + ");");
+                db.execSQL("CREATE INDEX verified_certs ON certs ("
+                        + CertsColumns.VERIFIED + ", " + CertsColumns.MASTER_KEY_ID + ");");
 
         }
 
@@ -282,6 +314,17 @@ public class KeychainDatabase extends SQLiteOpenHelper {
         consolidateIntent.putExtra(ConsolidateDialogActivity.EXTRA_CONSOLIDATE_RECOVERY, false);
         consolidateIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         mContext.getApplicationContext().startActivity(consolidateIntent);
+    }
+
+    @Override
+    public void onDowngrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        // Downgrade is ok for the debug version, makes it easier to work with branches
+        if (Constants.DEBUG) {
+            return;
+        }
+        // NOTE: downgrading the database is explicitly not allowed to prevent
+        // someone from exploiting old bugs to export the database
+        throw new RuntimeException("Downgrading the database is not allowed!");
     }
 
     /** This method tries to import data from a provided database.
@@ -297,10 +340,11 @@ public class KeychainDatabase extends SQLiteOpenHelper {
             // It's the Java way =(
             String[] dbs = context.databaseList();
             for (String db : dbs) {
-                if (db.equals("apg.db")) {
+                if ("apg.db".equals(db)) {
                     hasApgDb = true;
-                } else if (db.equals("apg_old.db")) {
+                } else if ("apg_old.db".equals(db)) {
                     Log.d(Constants.TAG, "Found apg_old.db, delete it!");
+                    // noinspection ResultOfMethodCallIgnored - if it doesn't happen, it doesn't happen.
                     context.getDatabasePath("apg_old.db").delete();
                 }
             }
@@ -384,7 +428,7 @@ public class KeychainDatabase extends SQLiteOpenHelper {
             }
         }
 
-        // delete old database
+        // noinspection ResultOfMethodCallIgnored - not much we can do if this doesn't work
         context.getDatabasePath("apg.db").delete();
     }
 
@@ -416,6 +460,7 @@ public class KeychainDatabase extends SQLiteOpenHelper {
         } else {
             in = context.getDatabasePath(DATABASE_NAME);
             out = context.getDatabasePath("debug_backup.db");
+            // noinspection ResultOfMethodCallIgnored - this is a pure debug feature, anyways
             out.createNewFile();
         }
         if (!in.canRead()) {

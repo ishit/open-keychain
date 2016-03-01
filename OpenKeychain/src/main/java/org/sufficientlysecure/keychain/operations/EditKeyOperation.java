@@ -17,15 +17,20 @@
 
 package org.sufficientlysecure.keychain.operations;
 
+
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import android.content.Context;
+import android.support.annotation.NonNull;
 
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.operations.results.EditKeyResult;
-import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.LogType;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.OperationLog;
 import org.sufficientlysecure.keychain.operations.results.PgpEditKeyResult;
 import org.sufficientlysecure.keychain.operations.results.SaveKeyringResult;
+import org.sufficientlysecure.keychain.operations.results.UploadResult;
 import org.sufficientlysecure.keychain.pgp.CanonicalizedSecretKeyRing;
 import org.sufficientlysecure.keychain.pgp.PgpKeyOperation;
 import org.sufficientlysecure.keychain.pgp.Progressable;
@@ -35,14 +40,15 @@ import org.sufficientlysecure.keychain.provider.ProviderHelper.NotFoundException
 import org.sufficientlysecure.keychain.service.ContactSyncAdapterService;
 import org.sufficientlysecure.keychain.service.PassphraseCacheService;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
+import org.sufficientlysecure.keychain.service.UploadKeyringParcel;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
+import org.sufficientlysecure.keychain.service.input.RequiredInputParcel;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.util.ProgressScaler;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-
-/** An operation which implements a high level key edit operation.
- *
+/**
+ * An operation which implements a high level key edit operation.
+ * <p/>
  * This operation provides a higher level interface to the edit and
  * create key operations in PgpKeyOperation. It takes care of fetching
  * and saving the key before and after the operation.
@@ -57,7 +63,16 @@ public class EditKeyOperation extends BaseOperation<SaveKeyringParcel> {
         super(context, providerHelper, progressable, cancelled);
     }
 
-    public OperationResult execute(SaveKeyringParcel saveParcel, CryptoInputParcel cryptoInput) {
+    /**
+     * Saves an edited key, and uploads it to a server atomically or otherwise as
+     * specified in saveParcel
+     *
+     * @param saveParcel  primary input to the operation
+     * @param cryptoInput input that changes if user interaction is required
+     * @return the result of the operation
+     */
+    @NonNull
+    public EditKeyResult execute(SaveKeyringParcel saveParcel, CryptoInputParcel cryptoInput) {
 
         OperationLog log = new OperationLog();
         log.add(LogType.MSG_ED, 0);
@@ -84,7 +99,8 @@ public class EditKeyOperation extends BaseOperation<SaveKeyringParcel> {
 
                     modifyResult = keyOperations.modifySecretKeyRing(secRing, cryptoInput, saveParcel);
                     if (modifyResult.isPending()) {
-                        return modifyResult;
+                        log.add(modifyResult, 1);
+                        return new EditKeyResult(log, modifyResult);
                     }
 
                 } catch (NotFoundException e) {
@@ -118,6 +134,33 @@ public class EditKeyOperation extends BaseOperation<SaveKeyringParcel> {
         // It's a success, so this must be non-null now
         UncachedKeyRing ring = modifyResult.getRing();
 
+        if (saveParcel.isUpload()) {
+            byte[] keyringBytes;
+            try {
+                UncachedKeyRing publicKeyRing = ring.extractPublicKeyRing();
+                keyringBytes = publicKeyRing.getEncoded();
+            } catch (IOException e) {
+                log.add(LogType.MSG_ED_ERROR_EXTRACTING_PUBLIC_UPLOAD, 1);
+                return new EditKeyResult(EditKeyResult.RESULT_ERROR, log, null);
+            }
+
+            UploadKeyringParcel exportKeyringParcel =
+                    new UploadKeyringParcel(saveParcel.getUploadKeyserver(), keyringBytes);
+
+            UploadResult uploadResult =
+                    new UploadOperation(mContext, mProviderHelper, mProgressable, mCancelled)
+                            .execute(exportKeyringParcel, cryptoInput);
+
+            log.add(uploadResult, 2);
+
+            if (uploadResult.isPending()) {
+                return new EditKeyResult(log, uploadResult);
+            } else if (!uploadResult.success() && saveParcel.isUploadAtomic()) {
+                // if atomic, update fail implies edit operation should also fail and not save
+                return new EditKeyResult(log, RequiredInputParcel.createRetryUploadOperation(), cryptoInput);
+            }
+        }
+
         // Save the new keyring.
         SaveKeyringResult saveResult = mProviderHelper
                 .saveSecretKeyRing(ring, new ProgressScaler(mProgressable, 60, 95, 100));
@@ -128,26 +171,13 @@ public class EditKeyOperation extends BaseOperation<SaveKeyringParcel> {
             return new EditKeyResult(EditKeyResult.RESULT_ERROR, log, null);
         }
 
-        // There is a new passphrase - cache it
-        if (saveParcel.mNewUnlock != null) {
-            log.add(LogType.MSG_ED_CACHING_NEW, 1);
-            PassphraseCacheService.addCachedPassphrase(mContext,
-                    ring.getMasterKeyId(),
-                    ring.getMasterKeyId(),
-                    saveParcel.mNewUnlock.mNewPassphrase != null
-                            ? saveParcel.mNewUnlock.mNewPassphrase
-                            : saveParcel.mNewUnlock.mNewPin,
-                    ring.getPublicKey().getPrimaryUserIdWithFallback());
-        }
-
         updateProgress(R.string.progress_done, 100, 100);
 
         // make sure new data is synced into contacts
-        ContactSyncAdapterService.requestSync();
+        ContactSyncAdapterService.requestContactsSync();
 
         log.add(LogType.MSG_ED_SUCCESS, 0);
         return new EditKeyResult(EditKeyResult.RESULT_OK, log, ring.getMasterKeyId());
 
     }
-
 }

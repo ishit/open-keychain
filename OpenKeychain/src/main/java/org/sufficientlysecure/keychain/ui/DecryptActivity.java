@@ -29,14 +29,15 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.support.annotation.Nullable;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentTransaction;
-import android.view.View;
 import android.widget.Toast;
 
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.intents.OpenKeychainIntents;
-import org.sufficientlysecure.keychain.provider.TemporaryStorageProvider;
+import org.sufficientlysecure.keychain.pgp.PgpHelper;
+import org.sufficientlysecure.keychain.provider.TemporaryFileProvider;
 import org.sufficientlysecure.keychain.ui.base.BaseActivity;
 
 
@@ -49,13 +50,7 @@ public class DecryptActivity extends BaseActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        setFullScreenDialogClose(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                setResult(Activity.RESULT_CANCELED);
-                finish();
-            }
-        }, false);
+        setFullScreenDialogClose(Activity.RESULT_CANCELED, false);
 
         // Handle intent actions
         handleActions(savedInstanceState, getIntent());
@@ -87,6 +82,9 @@ public class DecryptActivity extends BaseActivity {
             return;
         }
 
+        // depending on the data source, we may or may not be able to delete the original file
+        boolean canDelete = false;
+
         try {
 
             switch (action) {
@@ -99,7 +97,9 @@ public class DecryptActivity extends BaseActivity {
                     } else if (intent.hasExtra(Intent.EXTRA_TEXT)) {
                         String text = intent.getStringExtra(Intent.EXTRA_TEXT);
                         Uri uri = readToTempFile(text);
-                        uris.add(uri);
+                        if (uri != null) {
+                            uris.add(uri);
+                        }
                     }
 
                     break;
@@ -111,7 +111,9 @@ public class DecryptActivity extends BaseActivity {
                     } else if (intent.hasExtra(Intent.EXTRA_TEXT)) {
                         for (String text : intent.getStringArrayListExtra(Intent.EXTRA_TEXT)) {
                             Uri uri = readToTempFile(text);
-                            uris.add(uri);
+                            if (uri != null) {
+                                uris.add(uri);
+                            }
                         }
                     }
 
@@ -145,19 +147,31 @@ public class DecryptActivity extends BaseActivity {
                         String text = clip.getItemAt(0).coerceToText(this).toString();
                         uri = readToTempFile(text);
                     }
-                    uris.add(uri);
+                    if (uri != null) {
+                        uris.add(uri);
+                    }
 
                     break;
                 }
 
                 // for everything else, just work on the intent data
-                case OpenKeychainIntents.DECRYPT_DATA:
                 case Intent.ACTION_VIEW:
+                    canDelete = true;
+                case OpenKeychainIntents.DECRYPT_DATA:
                 default:
-                    uris.add(intent.getData());
+                    Uri uri = intent.getData();
+                    if (uri != null) {
+
+                        if ("com.android.email.attachmentprovider".equals(uri.getHost())) {
+                            Toast.makeText(this, R.string.error_reading_aosp, Toast.LENGTH_LONG).show();
+                            finish();
+                            return;
+                        }
+
+                        uris.add(uri);
+                    }
 
             }
-
 
         } catch (IOException e) {
             Toast.makeText(this, R.string.error_reading_text, Toast.LENGTH_LONG).show();
@@ -173,21 +187,33 @@ public class DecryptActivity extends BaseActivity {
             return;
         }
 
-        displayListFragment(uris);
+        displayListFragment(uris, canDelete);
 
     }
 
+    @Nullable
     public Uri readToTempFile(String text) throws IOException {
-        Uri tempFile = TemporaryStorageProvider.createFile(this);
+        Uri tempFile = TemporaryFileProvider.createFile(this);
         OutputStream outStream = getContentResolver().openOutputStream(tempFile);
-        outStream.write(text.getBytes());
+        if (outStream == null) {
+            return null;
+        }
+
+        // clean up ascii armored message, fixing newlines and stuff
+        String cleanedText = PgpHelper.getPgpMessageContent(text);
+        if (cleanedText == null) {
+            return null;
+        }
+
+        // if cleanup didn't work, just try the raw data
+        outStream.write(cleanedText.getBytes());
         outStream.close();
         return tempFile;
     }
 
-    public void displayListFragment(ArrayList<Uri> inputUris) {
+    public void displayListFragment(ArrayList<Uri> inputUris, boolean canDelete) {
 
-        DecryptListFragment frag = DecryptListFragment.newInstance(inputUris);
+        DecryptListFragment frag = DecryptListFragment.newInstance(inputUris, canDelete);
 
         FragmentManager fragMan = getSupportFragmentManager();
 

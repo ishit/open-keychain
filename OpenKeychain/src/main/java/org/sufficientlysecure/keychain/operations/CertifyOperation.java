@@ -17,53 +17,57 @@
 
 package org.sufficientlysecure.keychain.operations;
 
-import android.content.Context;
 
-import org.sufficientlysecure.keychain.Constants;
-import org.sufficientlysecure.keychain.keyimport.HkpKeyserver;
-import org.sufficientlysecure.keychain.keyimport.Keyserver.AddKeyException;
+import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import android.content.Context;
+import android.support.annotation.NonNull;
+
 import org.sufficientlysecure.keychain.operations.results.CertifyResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.LogType;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.OperationLog;
 import org.sufficientlysecure.keychain.operations.results.SaveKeyringResult;
+import org.sufficientlysecure.keychain.operations.results.UploadResult;
 import org.sufficientlysecure.keychain.pgp.CanonicalizedPublicKeyRing;
 import org.sufficientlysecure.keychain.pgp.CanonicalizedSecretKey;
 import org.sufficientlysecure.keychain.pgp.CanonicalizedSecretKeyRing;
+import org.sufficientlysecure.keychain.pgp.PassphraseCacheInterface;
 import org.sufficientlysecure.keychain.pgp.PgpCertifyOperation;
 import org.sufficientlysecure.keychain.pgp.PgpCertifyOperation.PgpCertifyResult;
 import org.sufficientlysecure.keychain.pgp.Progressable;
 import org.sufficientlysecure.keychain.pgp.UncachedKeyRing;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
+import org.sufficientlysecure.keychain.provider.CachedPublicKeyRing;
 import org.sufficientlysecure.keychain.provider.ProviderHelper;
 import org.sufficientlysecure.keychain.provider.ProviderHelper.NotFoundException;
 import org.sufficientlysecure.keychain.service.CertifyActionsParcel;
 import org.sufficientlysecure.keychain.service.CertifyActionsParcel.CertifyAction;
 import org.sufficientlysecure.keychain.service.ContactSyncAdapterService;
+import org.sufficientlysecure.keychain.service.UploadKeyringParcel;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.service.input.RequiredInputParcel;
 import org.sufficientlysecure.keychain.service.input.RequiredInputParcel.NfcSignOperationsBuilder;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
-import org.sufficientlysecure.keychain.util.Log;
 import org.sufficientlysecure.keychain.util.Passphrase;
 
-import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-/** An operation which implements a high level user id certification operation.
- *
+/**
+ * An operation which implements a high level user id certification operation.
+ * <p/>
  * This operation takes a specific CertifyActionsParcel as its input. These
  * contain a masterKeyId to be used for certification, and a list of
  * masterKeyIds and related user ids to certify.
  *
  * @see CertifyActionsParcel
- *
  */
 public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
 
-    public CertifyOperation(Context context, ProviderHelper providerHelper, Progressable progressable, AtomicBoolean cancelled) {
+    public CertifyOperation(Context context, ProviderHelper providerHelper, Progressable progressable, AtomicBoolean
+            cancelled) {
         super(context, providerHelper, progressable, cancelled);
     }
 
+    @NonNull
     @Override
     public CertifyResult execute(CertifyActionsParcel parcel, CryptoInputParcel cryptoInput) {
 
@@ -72,28 +76,33 @@ public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
 
         // Retrieve and unlock secret key
         CanonicalizedSecretKey certificationKey;
+        long masterKeyId = parcel.mMasterKeyId;
         try {
 
             log.add(LogType.MSG_CRT_MASTER_FETCH, 1);
-            CanonicalizedSecretKeyRing secretKeyRing =
-                    mProviderHelper.getCanonicalizedSecretKeyRing(parcel.mMasterKeyId);
-            log.add(LogType.MSG_CRT_UNLOCK, 1);
-            certificationKey = secretKeyRing.getSecretKey();
 
+            CachedPublicKeyRing cachedPublicKeyRing = mProviderHelper.getCachedPublicKeyRing(masterKeyId);
             Passphrase passphrase;
 
-            switch (certificationKey.getSecretKeyType()) {
+            switch (cachedPublicKeyRing.getSecretKeyType(masterKeyId)) {
                 case PIN:
                 case PATTERN:
                 case PASSPHRASE:
-                    if (!cryptoInput.hasPassphrase()) {
+                    passphrase = cryptoInput.getPassphrase();
+                    if (passphrase == null) {
+                        try {
+                            passphrase = getCachedPassphrase(masterKeyId, masterKeyId);
+                        } catch (PassphraseCacheInterface.NoSecretKeyException ignored) {
+                            // treat as a cache miss for error handling purposes
+                        }
+                    }
+
+                    if (passphrase == null) {
                         return new CertifyResult(log,
-                                RequiredInputParcel.createRequiredSignPassphrase(
-                                certificationKey.getKeyId(), certificationKey.getKeyId(), null)
+                                RequiredInputParcel.createRequiredSignPassphrase(masterKeyId, masterKeyId, null),
+                                cryptoInput
                         );
                     }
-                    // certification is always with the master key id, so use that one
-                    passphrase = cryptoInput.getPassphrase();
                     break;
 
                 case PASSPHRASE_EMPTY:
@@ -101,6 +110,7 @@ public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
                     break;
 
                 case DIVERT_TO_CARD:
+                    // the unlock operation will succeed for passphrase == null in a divertToCard key
                     passphrase = null;
                     break;
 
@@ -109,7 +119,14 @@ public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
                     return new CertifyResult(CertifyResult.RESULT_ERROR, log);
             }
 
-            if (!certificationKey.unlock(passphrase)) {
+            // Get actual secret key
+            CanonicalizedSecretKeyRing secretKeyRing =
+                    mProviderHelper.getCanonicalizedSecretKeyRing(parcel.mMasterKeyId);
+            certificationKey = secretKeyRing.getSecretKey();
+
+            log.add(LogType.MSG_CRT_UNLOCK, 1);
+            boolean unlockSuccessful = certificationKey.unlock(passphrase);
+            if (!unlockSuccessful) {
                 log.add(LogType.MSG_CRT_ERROR_UNLOCK, 2);
                 return new CertifyResult(CertifyResult.RESULT_ERROR, log);
             }
@@ -128,8 +145,7 @@ public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
         int certifyOk = 0, certifyError = 0, uploadOk = 0, uploadError = 0;
 
         NfcSignOperationsBuilder allRequiredInput = new NfcSignOperationsBuilder(
-                cryptoInput.getSignatureTime(), certificationKey.getKeyId(),
-                certificationKey.getKeyId());
+                cryptoInput.getSignatureTime(), masterKeyId, masterKeyId);
 
         // Work through all requested certifications
         for (CertifyAction action : parcel.mCertifyActions) {
@@ -174,9 +190,9 @@ public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
 
         }
 
-        if ( ! allRequiredInput.isEmpty()) {
+        if (!allRequiredInput.isEmpty()) {
             log.add(LogType.MSG_CRT_NFC_RETURN, 1);
-            return new CertifyResult(log, allRequiredInput.build());
+            return new CertifyResult(log, allRequiredInput.build(), cryptoInput);
         }
 
         log.add(LogType.MSG_CRT_SAVING, 1);
@@ -187,11 +203,10 @@ public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
             return new CertifyResult(CertifyResult.RESULT_CANCELLED, log);
         }
 
-        HkpKeyserver keyServer = null;
-        ExportOperation exportOperation = null;
+        // these variables are used inside the following loop, but they need to be created only once
+        UploadOperation uploadOperation = null;
         if (parcel.keyServerUri != null) {
-            keyServer = new HkpKeyserver(parcel.keyServerUri);
-            exportOperation = new ExportOperation(mContext, mProviderHelper, mProgressable);
+            uploadOperation = new UploadOperation(mContext, mProviderHelper, mProgressable, mCancelled);
         }
 
         // Write all certified keys into the database
@@ -200,7 +215,8 @@ public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
             // Check if we were cancelled
             if (checkCancelled()) {
                 log.add(LogType.MSG_OPERATION_CANCELLED, 0);
-                return new CertifyResult(CertifyResult.RESULT_CANCELLED, log, certifyOk, certifyError, uploadOk, uploadError);
+                return new CertifyResult(CertifyResult.RESULT_CANCELLED, log, certifyOk, certifyError, uploadOk,
+                        uploadError);
             }
 
             log.add(LogType.MSG_CRT_SAVE, 2,
@@ -209,13 +225,15 @@ public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
             mProviderHelper.clearLog();
             SaveKeyringResult result = mProviderHelper.savePublicKeyRing(certifiedKey);
 
-            if (exportOperation != null) {
-                // TODO use subresult, get rid of try/catch!
-                try {
-                    exportOperation.uploadKeyRingToServer(keyServer, certifiedKey);
+            if (uploadOperation != null) {
+                UploadKeyringParcel uploadInput =
+                        new UploadKeyringParcel(parcel.keyServerUri, certifiedKey.getMasterKeyId());
+                UploadResult uploadResult = uploadOperation.execute(uploadInput, cryptoInput);
+                log.add(uploadResult, 2);
+
+                if (uploadResult.success()) {
                     uploadOk += 1;
-                } catch (AddKeyException e) {
-                    Log.e(Constants.TAG, "error uploading key", e);
+                } else {
                     uploadError += 1;
                 }
             }
@@ -227,19 +245,24 @@ public class CertifyOperation extends BaseOperation<CertifyActionsParcel> {
             }
 
             log.add(result, 2);
-
         }
 
         if (certifyOk == 0) {
             log.add(LogType.MSG_CRT_ERROR_NOTHING, 0);
-            return new CertifyResult(CertifyResult.RESULT_ERROR, log, certifyOk, certifyError, uploadOk, uploadError);
+            return new CertifyResult(CertifyResult.RESULT_ERROR, log, certifyOk, certifyError,
+                    uploadOk, uploadError);
         }
 
+        // since only verified keys are synced to contacts, we need to initiate a sync now
+        ContactSyncAdapterService.requestContactsSync();
+
         log.add(LogType.MSG_CRT_SUCCESS, 0);
-        //since only verified keys are synced to contacts, we need to initiate a sync now
-        ContactSyncAdapterService.requestSync();
-        
-        return new CertifyResult(CertifyResult.RESULT_OK, log, certifyOk, certifyError, uploadOk, uploadError);
+        if (uploadError != 0) {
+            return new CertifyResult(CertifyResult.RESULT_WARNINGS, log, certifyOk, certifyError, uploadOk,
+                    uploadError);
+        } else {
+            return new CertifyResult(CertifyResult.RESULT_OK, log, certifyOk, certifyError, uploadOk, uploadError);
+        }
 
     }
 

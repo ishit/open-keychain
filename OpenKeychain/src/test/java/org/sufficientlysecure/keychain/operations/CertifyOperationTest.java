@@ -26,8 +26,8 @@ import org.robolectric.RobolectricGradleTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLog;
-import org.spongycastle.bcpg.sig.KeyFlags;
-import org.spongycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.bcpg.sig.KeyFlags;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.sufficientlysecure.keychain.BuildConfig;
 import org.sufficientlysecure.keychain.WorkaroundBuildConfig;
 import org.sufficientlysecure.keychain.operations.results.CertifyResult;
@@ -52,6 +52,7 @@ import org.sufficientlysecure.keychain.util.TestingUtils;
 import java.io.PrintStream;
 import java.security.Security;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Random;
 
 @RunWith(RobolectricGradleTestRunner.class)
@@ -77,11 +78,11 @@ public class CertifyOperationTest {
         {
             SaveKeyringParcel parcel = new SaveKeyringParcel();
             parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                    Algorithm.RSA, 1024, null, KeyFlags.CERTIFY_OTHER, 0L));
+                    Algorithm.ECDSA, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.CERTIFY_OTHER, 0L));
             parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                    Algorithm.DSA, 1024, null, KeyFlags.SIGN_DATA, 0L));
+                    Algorithm.ECDSA, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.SIGN_DATA, 0L));
             parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                    Algorithm.ELGAMAL, 1024, null, KeyFlags.ENCRYPT_COMMS, 0L));
+                    Algorithm.ECDH, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.ENCRYPT_COMMS, 0L));
             parcel.mAddUserIds.add("derp");
             parcel.mNewUnlock = new ChangeUnlockParcel(mKeyPhrase1);
 
@@ -95,11 +96,11 @@ public class CertifyOperationTest {
         {
             SaveKeyringParcel parcel = new SaveKeyringParcel();
             parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                    Algorithm.RSA, 1024, null, KeyFlags.CERTIFY_OTHER, 0L));
+                    Algorithm.ECDSA, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.CERTIFY_OTHER, 0L));
             parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                    Algorithm.DSA, 1024, null, KeyFlags.SIGN_DATA, 0L));
+                    Algorithm.ECDSA, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.SIGN_DATA, 0L));
             parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                    Algorithm.ELGAMAL, 1024, null, KeyFlags.ENCRYPT_COMMS, 0L));
+                    Algorithm.ECDH, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.ENCRYPT_COMMS, 0L));
 
             parcel.mAddUserIds.add("ditz");
             byte[] uatdata = new byte[random.nextInt(150)+10];
@@ -126,7 +127,7 @@ public class CertifyOperationTest {
         ShadowLog.stream = oldShadowStream;
 
         providerHelper.saveSecretKeyRing(mStaticRing1, new ProgressScaler());
-        providerHelper.savePublicKeyRing(mStaticRing2.extractPublicKeyRing(), new ProgressScaler());
+        providerHelper.savePublicKeyRing(mStaticRing2.extractPublicKeyRing(), new ProgressScaler(), null);
 
         // ok NOW log verbosely!
         ShadowLog.stream = System.out;
@@ -157,8 +158,8 @@ public class CertifyOperationTest {
 
         CertifyActionsParcel actions = new CertifyActionsParcel(mStaticRing1.getMasterKeyId());
         actions.add(new CertifyAction(mStaticRing2.getMasterKeyId(),
-                mStaticRing2.getPublicKey().getUnorderedUserIds()));
-        CertifyResult result = op.execute(actions, new CryptoInputParcel(mKeyPhrase1));
+                mStaticRing2.getPublicKey().getUnorderedUserIds(), null));
+        CertifyResult result = op.execute(actions, new CryptoInputParcel(new Date(), mKeyPhrase1));
 
         Assert.assertTrue("certification must succeed", result.success());
 
@@ -186,7 +187,7 @@ public class CertifyOperationTest {
         CertifyActionsParcel actions = new CertifyActionsParcel(mStaticRing1.getMasterKeyId());
         actions.add(new CertifyAction(mStaticRing2.getMasterKeyId(), null,
                 mStaticRing2.getPublicKey().getUnorderedUserAttributes()));
-        CertifyResult result = op.execute(actions, new CryptoInputParcel(mKeyPhrase1));
+        CertifyResult result = op.execute(actions, new CryptoInputParcel(new Date(), mKeyPhrase1));
 
         Assert.assertTrue("certification must succeed", result.success());
 
@@ -207,9 +208,9 @@ public class CertifyOperationTest {
 
         CertifyActionsParcel actions = new CertifyActionsParcel(mStaticRing1.getMasterKeyId());
         actions.add(new CertifyAction(mStaticRing1.getMasterKeyId(),
-                mStaticRing2.getPublicKey().getUnorderedUserIds()));
+                mStaticRing2.getPublicKey().getUnorderedUserIds(), null));
 
-        CertifyResult result = op.execute(actions, new CryptoInputParcel(mKeyPhrase1));
+        CertifyResult result = op.execute(actions, new CryptoInputParcel(new Date(), mKeyPhrase1));
 
         Assert.assertFalse("certification with itself must fail!", result.success());
         Assert.assertTrue("error msg must be about self certification",
@@ -226,9 +227,10 @@ public class CertifyOperationTest {
             CertifyActionsParcel actions = new CertifyActionsParcel(mStaticRing1.getMasterKeyId());
             ArrayList<String> uids = new ArrayList<String>();
             uids.add("nonexistent");
-            actions.add(new CertifyAction(1234L, uids));
+            actions.add(new CertifyAction(1234L, uids, null));
 
-            CertifyResult result = op.execute(actions, new CryptoInputParcel(mKeyPhrase1));
+            CertifyResult result = op.execute(actions, new CryptoInputParcel(new Date(),
+                    mKeyPhrase1));
 
             Assert.assertFalse("certification of nonexistent key must fail", result.success());
             Assert.assertTrue("must contain error msg about not found",
@@ -238,9 +240,10 @@ public class CertifyOperationTest {
         {
             CertifyActionsParcel actions = new CertifyActionsParcel(1234L);
             actions.add(new CertifyAction(mStaticRing1.getMasterKeyId(),
-                    mStaticRing2.getPublicKey().getUnorderedUserIds()));
+                    mStaticRing2.getPublicKey().getUnorderedUserIds(), null));
 
-            CertifyResult result = op.execute(actions, new CryptoInputParcel(mKeyPhrase1));
+            CertifyResult result = op.execute(actions, new CryptoInputParcel(new Date(),
+                    mKeyPhrase1));
 
             Assert.assertFalse("certification of nonexistent key must fail", result.success());
             Assert.assertTrue("must contain error msg about not found",

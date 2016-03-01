@@ -27,7 +27,8 @@ import org.robolectric.RobolectricGradleTestRunner;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLog;
-import org.spongycastle.bcpg.sig.KeyFlags;
+import org.bouncycastle.bcpg.sig.KeyFlags;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.sufficientlysecure.keychain.BuildConfig;
 import org.sufficientlysecure.keychain.WorkaroundBuildConfig;
 import org.sufficientlysecure.keychain.operations.results.PgpEditKeyResult;
@@ -41,6 +42,7 @@ import org.sufficientlysecure.keychain.util.Passphrase;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.security.Security;
 import java.util.Iterator;
 import java.util.Random;
 
@@ -53,15 +55,16 @@ public class UncachedKeyringTest {
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
+        Security.insertProviderAt(new BouncyCastleProvider(), 1);
         ShadowLog.stream = System.out;
 
         SaveKeyringParcel parcel = new SaveKeyringParcel();
         parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                Algorithm.RSA, 1024, null, KeyFlags.CERTIFY_OTHER, 0L));
+                Algorithm.ECDSA, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.CERTIFY_OTHER, 0L));
         parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                Algorithm.RSA, 1024, null, KeyFlags.SIGN_DATA, 0L));
+                Algorithm.ECDSA, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.SIGN_DATA, 0L));
         parcel.mAddSubKeys.add(new SaveKeyringParcel.SubkeyAdd(
-                Algorithm.RSA, 1024, null, KeyFlags.ENCRYPT_COMMS, 0L));
+                Algorithm.ECDH, 0, SaveKeyringParcel.Curve.NIST_P256, KeyFlags.ENCRYPT_COMMS, 0L));
 
         parcel.mAddUserIds.add("twi");
         parcel.mAddUserIds.add("pink");

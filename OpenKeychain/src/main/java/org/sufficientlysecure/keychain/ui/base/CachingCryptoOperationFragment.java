@@ -8,7 +8,7 @@ import org.sufficientlysecure.keychain.operations.results.OperationResult;
 
 
 public abstract class CachingCryptoOperationFragment <T extends Parcelable, S extends OperationResult>
-        extends CryptoOperationFragment<T, S> {
+        extends QueueingCryptoOperationFragment<T, S> {
 
     public static final String ARG_CACHED_ACTIONS = "cached_actions";
 
@@ -31,8 +31,13 @@ public abstract class CachingCryptoOperationFragment <T extends Parcelable, S ex
     }
 
     @Override
-    protected void onCryptoOperationResult(S result) {
-        super.onCryptoOperationResult(result);
+    public void onQueuedOperationSuccess(S result) {
+        mCachedActionsParcel = null;
+    }
+
+    @Override
+    public void onQueuedOperationError(S result) {
+        super.onQueuedOperationError(result);
         mCachedActionsParcel = null;
     }
 

@@ -28,23 +28,24 @@ import org.sufficientlysecure.keychain.pgp.exception.PgpKeyNotFoundException;
 import org.sufficientlysecure.keychain.provider.CachedPublicKeyRing;
 import org.sufficientlysecure.keychain.provider.KeychainContract.KeyRings;
 import org.sufficientlysecure.keychain.provider.ProviderHelper;
-import org.sufficientlysecure.keychain.ui.base.BaseNfcActivity;
+import org.sufficientlysecure.keychain.ui.base.BaseSecurityTokenNfcActivity;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.util.Passphrase;
+import org.sufficientlysecure.keychain.util.Preferences;
 
 import java.io.IOException;
 import java.util.ArrayList;
 
-public class CreateKeyActivity extends BaseNfcActivity {
+public class CreateKeyActivity extends BaseSecurityTokenNfcActivity {
 
     public static final String EXTRA_NAME = "name";
     public static final String EXTRA_EMAIL = "email";
     public static final String EXTRA_FIRST_TIME = "first_time";
     public static final String EXTRA_ADDITIONAL_EMAILS = "additional_emails";
     public static final String EXTRA_PASSPHRASE = "passphrase";
-    public static final String EXTRA_CREATE_YUBI_KEY = "create_yubi_key";
-    public static final String EXTRA_YUBI_KEY_PIN = "yubi_key_pin";
-    public static final String EXTRA_YUBI_KEY_ADMIN_PIN = "yubi_key_admin_pin";
+    public static final String EXTRA_CREATE_SECURITY_TOKEN = "create_yubi_key";
+    public static final String EXTRA_SECURITY_TOKEN_PIN = "yubi_key_pin";
+    public static final String EXTRA_SECURITY_TOKEN_ADMIN_PIN = "yubi_key_admin_pin";
 
     public static final String EXTRA_NFC_USER_ID = "nfc_user_id";
     public static final String EXTRA_NFC_AID = "nfc_aid";
@@ -57,11 +58,16 @@ public class CreateKeyActivity extends BaseNfcActivity {
     ArrayList<String> mAdditionalEmails;
     Passphrase mPassphrase;
     boolean mFirstTime;
-    boolean mCreateYubiKey;
-    Passphrase mYubiKeyPin;
-    Passphrase mYubiKeyAdminPin;
+    boolean mCreateSecurityToken;
+    Passphrase mSecurityTokenPin;
+    Passphrase mSecurityTokenAdminPin;
 
     Fragment mCurrentFragment;
+
+
+    byte[] mScannedFingerprints;
+    byte[] mNfcAid;
+    String mNfcUserId;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -70,13 +76,8 @@ public class CreateKeyActivity extends BaseNfcActivity {
         // React on NDEF_DISCOVERED from Manifest
         // NOTE: ACTION_NDEF_DISCOVERED and not ACTION_TAG_DISCOVERED like in BaseNfcActivity
         if (NfcAdapter.ACTION_NDEF_DISCOVERED.equals(getIntent().getAction())) {
-            try {
-                handleTagDiscoveredIntent(getIntent());
-            } catch (CardException e) {
-                handleNfcError(e);
-            } catch (IOException e) {
-                handleNfcError(e);
-            }
+
+            mTagDispatcher.interceptIntent(getIntent());
 
             setTitle(R.string.title_manage_my_keys);
 
@@ -92,9 +93,9 @@ public class CreateKeyActivity extends BaseNfcActivity {
             mAdditionalEmails = savedInstanceState.getStringArrayList(EXTRA_ADDITIONAL_EMAILS);
             mPassphrase = savedInstanceState.getParcelable(EXTRA_PASSPHRASE);
             mFirstTime = savedInstanceState.getBoolean(EXTRA_FIRST_TIME);
-            mCreateYubiKey = savedInstanceState.getBoolean(EXTRA_CREATE_YUBI_KEY);
-            mYubiKeyPin = savedInstanceState.getParcelable(EXTRA_YUBI_KEY_PIN);
-            mYubiKeyAdminPin = savedInstanceState.getParcelable(EXTRA_YUBI_KEY_ADMIN_PIN);
+            mCreateSecurityToken = savedInstanceState.getBoolean(EXTRA_CREATE_SECURITY_TOKEN);
+            mSecurityTokenPin = savedInstanceState.getParcelable(EXTRA_SECURITY_TOKEN_PIN);
+            mSecurityTokenAdminPin = savedInstanceState.getParcelable(EXTRA_SECURITY_TOKEN_ADMIN_PIN);
 
             mCurrentFragment = getSupportFragmentManager().findFragmentByTag(FRAGMENT_TAG);
         } else {
@@ -104,7 +105,7 @@ public class CreateKeyActivity extends BaseNfcActivity {
             mName = intent.getStringExtra(EXTRA_NAME);
             mEmail = intent.getStringExtra(EXTRA_EMAIL);
             mFirstTime = intent.getBooleanExtra(EXTRA_FIRST_TIME, false);
-            mCreateYubiKey = intent.getBooleanExtra(EXTRA_CREATE_YUBI_KEY, false);
+            mCreateSecurityToken = intent.getBooleanExtra(EXTRA_CREATE_SECURITY_TOKEN, false);
 
             if (intent.hasExtra(EXTRA_NFC_FINGERPRINTS)) {
                 byte[] nfcFingerprints = intent.getByteArrayExtra(EXTRA_NFC_FINGERPRINTS);
@@ -112,13 +113,13 @@ public class CreateKeyActivity extends BaseNfcActivity {
                 byte[] nfcAid = intent.getByteArrayExtra(EXTRA_NFC_AID);
 
                 if (containsKeys(nfcFingerprints)) {
-                    Fragment frag = CreateYubiKeyImportFragment.newInstance(
+                    Fragment frag = CreateSecurityTokenImportResetFragment.newInstance(
                             nfcFingerprints, nfcAid, nfcUserId);
                     loadFragment(frag, FragAction.START);
 
                     setTitle(R.string.title_import_keys);
                 } else {
-                    Fragment frag = CreateYubiKeyBlankFragment.newInstance();
+                    Fragment frag = CreateSecurityTokenBlankFragment.newInstance();
                     loadFragment(frag, FragAction.START);
                     setTitle(R.string.title_manage_my_keys);
                 }
@@ -142,52 +143,61 @@ public class CreateKeyActivity extends BaseNfcActivity {
     }
 
     @Override
-    protected void onNfcPerform() throws IOException {
+    protected void doNfcInBackground() throws IOException {
         if (mCurrentFragment instanceof NfcListenerFragment) {
-            ((NfcListenerFragment) mCurrentFragment).onNfcPerform();
+            ((NfcListenerFragment) mCurrentFragment).doNfcInBackground();
             return;
         }
 
-        byte[] scannedFingerprints = nfcGetFingerprints();
-        byte[] nfcAid = nfcGetAid();
-        String userId = nfcGetUserId();
+        mScannedFingerprints = nfcGetFingerprints();
+        mNfcAid = nfcGetAid();
+        mNfcUserId = nfcGetUserId();
+    }
 
-        if (containsKeys(scannedFingerprints)) {
+    @Override
+    protected void onNfcPostExecute() {
+        if (mCurrentFragment instanceof NfcListenerFragment) {
+            ((NfcListenerFragment) mCurrentFragment).onNfcPostExecute();
+            return;
+        }
+
+        if (containsKeys(mScannedFingerprints)) {
             try {
-                long masterKeyId = KeyFormattingUtils.getKeyIdFromFingerprint(scannedFingerprints);
+                long masterKeyId = KeyFormattingUtils.getKeyIdFromFingerprint(mScannedFingerprints);
                 CachedPublicKeyRing ring = new ProviderHelper(this).getCachedPublicKeyRing(masterKeyId);
                 ring.getMasterKeyId();
 
                 Intent intent = new Intent(this, ViewKeyActivity.class);
                 intent.setData(KeyRings.buildGenericKeyRingUri(masterKeyId));
-                intent.putExtra(ViewKeyActivity.EXTRA_NFC_AID, nfcAid);
-                intent.putExtra(ViewKeyActivity.EXTRA_NFC_USER_ID, userId);
-                intent.putExtra(ViewKeyActivity.EXTRA_NFC_FINGERPRINTS, scannedFingerprints);
+                intent.putExtra(ViewKeyActivity.EXTRA_SECURITY_TOKEN_AID, mNfcAid);
+                intent.putExtra(ViewKeyActivity.EXTRA_SECURITY_TOKEN_USER_ID, mNfcUserId);
+                intent.putExtra(ViewKeyActivity.EXTRA_SECURITY_TOKEN_FINGERPRINTS, mScannedFingerprints);
                 startActivity(intent);
                 finish();
 
             } catch (PgpKeyNotFoundException e) {
-                Fragment frag = CreateYubiKeyImportFragment.newInstance(
-                        scannedFingerprints, nfcAid, userId);
+                Fragment frag = CreateSecurityTokenImportResetFragment.newInstance(
+                        mScannedFingerprints, mNfcAid, mNfcUserId);
                 loadFragment(frag, FragAction.TO_RIGHT);
             }
         } else {
-            Fragment frag = CreateYubiKeyBlankFragment.newInstance();
+            Fragment frag = CreateSecurityTokenBlankFragment.newInstance();
             loadFragment(frag, FragAction.TO_RIGHT);
         }
-
     }
 
     private boolean containsKeys(byte[] scannedFingerprints) {
+        if (scannedFingerprints == null) {
+            return false;
+        }
+
         // If all fingerprint bytes are 0, the card contains no keys.
-        boolean cardContainsKeys = false;
         for (byte b : scannedFingerprints) {
             if (b != 0) {
-                cardContainsKeys = true;
-                break;
+                return true;
             }
         }
-        return cardContainsKeys;
+        return false;
     }
 
     @Override
@@ -199,9 +209,9 @@ public class CreateKeyActivity extends BaseNfcActivity {
         outState.putStringArrayList(EXTRA_ADDITIONAL_EMAILS, mAdditionalEmails);
         outState.putParcelable(EXTRA_PASSPHRASE, mPassphrase);
         outState.putBoolean(EXTRA_FIRST_TIME, mFirstTime);
-        outState.putBoolean(EXTRA_CREATE_YUBI_KEY, mCreateYubiKey);
-        outState.putParcelable(EXTRA_YUBI_KEY_PIN, mYubiKeyPin);
-        outState.putParcelable(EXTRA_YUBI_KEY_ADMIN_PIN, mYubiKeyAdminPin);
+        outState.putBoolean(EXTRA_CREATE_SECURITY_TOKEN, mCreateSecurityToken);
+        outState.putParcelable(EXTRA_SECURITY_TOKEN_PIN, mSecurityTokenPin);
+        outState.putParcelable(EXTRA_SECURITY_TOKEN_ADMIN_PIN, mSecurityTokenAdminPin);
     }
 
     @Override
@@ -246,7 +256,19 @@ public class CreateKeyActivity extends BaseNfcActivity {
     }
 
     interface NfcListenerFragment {
-        public void onNfcPerform() throws IOException;
+        void doNfcInBackground() throws IOException;
+        void onNfcPostExecute();
     }
 
+    @Override
+    public void finish() {
+        if (mFirstTime) {
+            Preferences prefs = Preferences.getPreferences(this);
+            prefs.setFirstTime(false);
+            Intent intent = new Intent(this, MainActivity.class);
+            startActivity(intent);
+        }
+
+        super.finish();
+    }
 }

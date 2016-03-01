@@ -24,7 +24,10 @@ import android.os.Parcelable;
 import com.textuality.keybase.lib.KeybaseException;
 import com.textuality.keybase.lib.prover.Prover;
 
-public class KeybaseVerificationResult extends OperationResult implements Parcelable {
+import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
+import org.sufficientlysecure.keychain.service.input.RequiredInputParcel;
+
+public class KeybaseVerificationResult extends InputPendingResult {
     public final String mProofUrl;
     public final String mPresenceUrl;
     public final String mPresenceLabel;
@@ -42,6 +45,14 @@ public class KeybaseVerificationResult extends OperationResult implements Parcel
         mProofUrl = prover.getProofUrl();
         mPresenceUrl = prover.getPresenceUrl();
         mPresenceLabel = prover.getPresenceLabel();
+    }
+
+    public KeybaseVerificationResult(OperationLog log, RequiredInputParcel requiredInputParcel,
+                                     CryptoInputParcel cryptoInputParcel) {
+        super(log, requiredInputParcel, cryptoInputParcel);
+        mProofUrl = null;
+        mPresenceUrl = null;
+        mPresenceLabel = null;
     }
 
     protected KeybaseVerificationResult(Parcel in) {

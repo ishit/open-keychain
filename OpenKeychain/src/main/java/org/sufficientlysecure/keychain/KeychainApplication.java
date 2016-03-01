@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Dominik Schürmann <dominik@dominikschuermann.de>
+ * Copyright (C) 2012-2016 Dominik Schürmann <dominik@dominikschuermann.de>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,23 +20,23 @@ package org.sufficientlysecure.keychain;
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.app.Application;
-import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Environment;
-import android.provider.ContactsContract;
+import android.support.annotation.Nullable;
 import android.widget.Toast;
 
-import org.spongycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.sufficientlysecure.keychain.provider.KeychainDatabase;
-import org.sufficientlysecure.keychain.provider.TemporaryStorageProvider;
-import org.sufficientlysecure.keychain.R;
+import org.sufficientlysecure.keychain.provider.TemporaryFileProvider;
+import org.sufficientlysecure.keychain.service.ContactSyncAdapterService;
+import org.sufficientlysecure.keychain.service.KeyserverSyncAdapterService;
 import org.sufficientlysecure.keychain.ui.ConsolidateDialogActivity;
+import org.sufficientlysecure.keychain.ui.util.FormattingUtils;
 import org.sufficientlysecure.keychain.util.Log;
 import org.sufficientlysecure.keychain.util.PRNGFixes;
 import org.sufficientlysecure.keychain.util.Preferences;
@@ -57,10 +57,14 @@ public class KeychainApplication extends Application {
         super.onCreate();
 
         /*
-         * Sets Bouncy (Spongy) Castle as preferred security provider
+         * Sets our own Bouncy Castle library as preferred security provider
          *
-         * insertProviderAt() position starts from 1
+         * because Android's default provider config has BC at position 3,
+         * we need to remove it and insert BC again at position 1 (above OpenSSLProvider!)
+         *
+         * (insertProviderAt() position starts from 1)
          */
+        Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME);
         Security.insertProviderAt(new BouncyCastleProvider(), 1);
 
         /*
@@ -91,20 +95,56 @@ public class KeychainApplication extends Application {
         }
 
         brandGlowEffect(getApplicationContext(),
-                getApplicationContext().getResources().getColor(R.color.primary));
+                FormattingUtils.getColorFromAttr(getApplicationContext(), R.attr.colorPrimary));
 
-        setupAccountAsNeeded(this);
+        // Add OpenKeychain account to Android to link contacts with keys and keyserver sync
+        createAccountIfNecessary(this);
+
+        // if first time, enable keyserver and contact sync
+        if (Preferences.getPreferences(this).isFirstTime()) {
+            KeyserverSyncAdapterService.enableKeyserverSync(this);
+            ContactSyncAdapterService.enableContactsSync(this);
+        }
 
         // Update keyserver list as needed
-        Preferences.getPreferences(this).updatePreferences();
+        Preferences.getPreferences(this).upgradePreferences(this);
 
-        TlsHelper.addStaticCA("pool.sks-keyservers.net", getAssets(), "sks-keyservers.netCA.cer");
+        TlsHelper.addPinnedCertificate("hkps.pool.sks-keyservers.net", getAssets(), "hkps.pool.sks-keyservers.net.CA.cer");
+        TlsHelper.addPinnedCertificate("pgp.mit.edu", getAssets(), "pgp.mit.edu.cer");
+        TlsHelper.addPinnedCertificate("api.keybase.io", getAssets(), "api.keybase.io.CA.cer");
 
-        TemporaryStorageProvider.cleanUp(this);
+        TemporaryFileProvider.cleanUp(this);
 
         if (!checkConsolidateRecovery()) {
             // force DB upgrade, https://github.com/open-keychain/open-keychain/issues/1334
             new KeychainDatabase(this).getReadableDatabase().close();
+        }
+    }
+
+    /**
+     * @return the OpenKeychain contact/keyserver sync account if it exists or was successfully
+     * created, null otherwise
+     */
+    public static @Nullable Account createAccountIfNecessary(Context context) {
+        try {
+            AccountManager manager = AccountManager.get(context);
+            Account[] accounts = manager.getAccountsByType(Constants.ACCOUNT_TYPE);
+
+            Account account = new Account(Constants.ACCOUNT_NAME, Constants.ACCOUNT_TYPE);
+            if (accounts.length == 0) {
+                if (!manager.addAccountExplicitly(account, null, null)) {
+                    Log.d(Constants.TAG, "error when adding account via addAccountExplicitly");
+                    return null;
+                } else {
+                    return account;
+                }
+            } else {
+                return accounts[0];
+            }
+        } catch (SecurityException e) {
+            Log.e(Constants.TAG, "SecurityException when adding the account", e);
+            Toast.makeText(context, R.string.reinstall_openkeychain, Toast.LENGTH_LONG).show();
+            return null;
         }
     }
 
@@ -131,28 +171,6 @@ public class KeychainApplication extends Application {
             return true;
         } else {
             return false;
-        }
-    }
-
-    /**
-     * Add OpenKeychain account to Android to link contacts with keys
-     */
-    public static void setupAccountAsNeeded(Context context) {
-        try {
-            AccountManager manager = AccountManager.get(context);
-            Account[] accounts = manager.getAccountsByType(Constants.ACCOUNT_TYPE);
-            if (accounts == null || accounts.length == 0) {
-                Account account = new Account(Constants.ACCOUNT_NAME, Constants.ACCOUNT_TYPE);
-                if (manager.addAccountExplicitly(account, null, null)) {
-                    ContentResolver.setIsSyncable(account, ContactsContract.AUTHORITY, 1);
-                    ContentResolver.setSyncAutomatically(account, ContactsContract.AUTHORITY, true);
-                } else {
-                    Log.e(Constants.TAG, "Adding account failed!");
-                }
-            }
-        } catch (SecurityException e) {
-            Log.e(Constants.TAG, "SecurityException when adding the account", e);
-            Toast.makeText(context, R.string.reinstall_openkeychain, Toast.LENGTH_LONG).show();
         }
     }
 

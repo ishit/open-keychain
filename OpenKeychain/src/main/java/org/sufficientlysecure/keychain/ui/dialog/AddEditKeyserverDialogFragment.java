@@ -24,7 +24,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.support.design.widget.TextInputLayout;
+import android.support.v7.app.AlertDialog;
 import android.app.Dialog;
 import android.app.ProgressDialog;
 import android.content.Context;
@@ -44,14 +45,24 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.TextView.OnEditorActionListener;
 
+import com.squareup.okhttp.OkHttpClient;
+import com.squareup.okhttp.Request;
+
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
+import org.sufficientlysecure.keychain.keyimport.HkpKeyserver;
+import org.sufficientlysecure.keychain.ui.util.Notify;
 import org.sufficientlysecure.keychain.util.Log;
+import org.sufficientlysecure.keychain.util.Preferences;
 import org.sufficientlysecure.keychain.util.TlsHelper;
+import org.sufficientlysecure.keychain.util.orbot.OrbotHelper;
+
+import java.net.Proxy;
 
 public class AddEditKeyserverDialogFragment extends DialogFragment implements OnEditorActionListener {
     private static final String ARG_MESSENGER = "arg_messenger";
@@ -60,11 +71,9 @@ public class AddEditKeyserverDialogFragment extends DialogFragment implements On
     private static final String ARG_KEYSERVER = "arg_keyserver";
 
     public static final int MESSAGE_OKAY = 1;
-    public static final int MESSAGE_VERIFICATION_FAILED = 2;
 
     public static final String MESSAGE_KEYSERVER = "new_keyserver";
     public static final String MESSAGE_VERIFIED = "verified";
-    public static final String MESSAGE_FAILURE_REASON = "failure_reason";
     public static final String MESSAGE_KEYSERVER_DELETED = "keyserver_deleted";
     public static final String MESSAGE_DIALOG_ACTION = "message_dialog_action";
     public static final String MESSAGE_EDIT_POSITION = "keyserver_edited_position";
@@ -74,7 +83,9 @@ public class AddEditKeyserverDialogFragment extends DialogFragment implements On
     private int mPosition;
 
     private EditText mKeyserverEditText;
+    private TextInputLayout mKeyserverEditTextLayout;
     private CheckBox mVerifyKeyserverCheckBox;
+    private CheckBox mOnlyTrustedKeyserverCheckBox;
 
     public enum DialogAction {
         ADD,
@@ -83,7 +94,8 @@ public class AddEditKeyserverDialogFragment extends DialogFragment implements On
 
     public enum FailureReason {
         INVALID_URL,
-        CONNECTION_FAILED
+        CONNECTION_FAILED,
+        NO_PINNED_CERTIFICATE
     }
 
     public static AddEditKeyserverDialogFragment newInstance(Messenger messenger,
@@ -118,7 +130,15 @@ public class AddEditKeyserverDialogFragment extends DialogFragment implements On
         alert.setView(view);
 
         mKeyserverEditText = (EditText) view.findViewById(R.id.keyserver_url_edit_text);
-        mVerifyKeyserverCheckBox = (CheckBox) view.findViewById(R.id.verify_keyserver_checkbox);
+        mKeyserverEditTextLayout = (TextInputLayout) view.findViewById(R.id.keyserver_url_edit_text_layout);
+        mVerifyKeyserverCheckBox = (CheckBox) view.findViewById(R.id.verify_connection_checkbox);
+        mOnlyTrustedKeyserverCheckBox = (CheckBox) view.findViewById(R.id.only_trusted_keyserver_checkbox);
+        mVerifyKeyserverCheckBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                mOnlyTrustedKeyserverCheckBox.setEnabled(isChecked);
+            }
+        });
 
         switch (mDialogAction) {
             case ADD: {
@@ -204,10 +224,45 @@ public class AddEditKeyserverDialogFragment extends DialogFragment implements On
             positiveButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
+                    mKeyserverEditTextLayout.setErrorEnabled(false);
+
                     // behaviour same for edit and add
-                    String keyserverUrl = mKeyserverEditText.getText().toString();
+                    final String keyserverUrl = mKeyserverEditText.getText().toString();
                     if (mVerifyKeyserverCheckBox.isChecked()) {
-                        verifyConnection(keyserverUrl);
+                        final Preferences.ProxyPrefs proxyPrefs = Preferences.getPreferences(getActivity())
+                                .getProxyPrefs();
+                        OrbotHelper.DialogActions dialogActions = new OrbotHelper.DialogActions() {
+                            @Override
+                            public void onOrbotStarted() {
+                                verifyConnection(
+                                        keyserverUrl,
+                                        proxyPrefs.parcelableProxy.getProxy(),
+                                        mOnlyTrustedKeyserverCheckBox.isChecked()
+                                );
+                            }
+
+                            @Override
+                            public void onNeutralButton() {
+                                verifyConnection(
+                                        keyserverUrl,
+                                        null,
+                                        mOnlyTrustedKeyserverCheckBox.isChecked()
+                                );
+                            }
+
+                            @Override
+                            public void onCancel() {
+                                // do nothing
+                            }
+                        };
+
+                        if (OrbotHelper.putOrbotInRequiredState(dialogActions, getActivity())) {
+                            verifyConnection(
+                                    keyserverUrl,
+                                    proxyPrefs.parcelableProxy.getProxy(),
+                                    mOnlyTrustedKeyserverCheckBox.isChecked()
+                            );
+                        }
                     } else {
                         dismiss();
                         // return unverified keyserver back to activity
@@ -242,14 +297,28 @@ public class AddEditKeyserverDialogFragment extends DialogFragment implements On
         sendMessageToHandler(MESSAGE_OKAY, data);
     }
 
-    public void verificationFailed(FailureReason reason) {
-        Bundle data = new Bundle();
-        data.putSerializable(MESSAGE_FAILURE_REASON, reason);
+    public void verificationFailed(FailureReason failureReason) {
+        switch (failureReason) {
+            case CONNECTION_FAILED: {
+                mKeyserverEditTextLayout.setError(
+                        getString(R.string.add_keyserver_connection_failed));
+                break;
+            }
+            case INVALID_URL: {
+                mKeyserverEditTextLayout.setError(
+                        getString(R.string.add_keyserver_invalid_url));
+                break;
+            }
+            case NO_PINNED_CERTIFICATE: {
+                mKeyserverEditTextLayout.setError(
+                        getString(R.string.add_keyserver_keyserver_not_trusted));
+                break;
+            }
+        }
 
-        sendMessageToHandler(MESSAGE_VERIFICATION_FAILED, data);
     }
 
-    public void verifyConnection(String keyserver) {
+    public void verifyConnection(String keyserver, final Proxy proxy, final boolean onlyTrustedKeyserver) {
 
         new AsyncTask<String, Void, FailureReason>() {
             ProgressDialog mProgressDialog;
@@ -258,7 +327,7 @@ public class AddEditKeyserverDialogFragment extends DialogFragment implements On
             @Override
             protected void onPreExecute() {
                 mProgressDialog = new ProgressDialog(getActivity());
-                mProgressDialog.setMessage(getString(R.string.progress_verifying_keyserver_url));
+                mProgressDialog.setMessage(getString(R.string.progress_verifying_keyserver_connection));
                 mProgressDialog.setCancelable(false);
                 mProgressDialog.show();
             }
@@ -283,10 +352,22 @@ public class AddEditKeyserverDialogFragment extends DialogFragment implements On
                     }
                     URI newKeyserver = new URI(scheme, schemeSpecificPart, fragment);
 
-                    Log.d(Constants.TAG, "Converted URL" + newKeyserver);
+                    Log.d("Converted URL", newKeyserver.toString());
 
-                    // just see if we can get a connection, then immediately close
-                    TlsHelper.openConnection(newKeyserver.toURL()).getInputStream().close();
+                    OkHttpClient client = HkpKeyserver.getClient(newKeyserver.toURL(), proxy);
+
+                    // don't follow any redirects
+                    client.setFollowRedirects(false);
+                    client.setFollowSslRedirects(false);
+
+                    if (onlyTrustedKeyserver
+                            && !TlsHelper.usePinnedCertificateIfAvailable(client, newKeyserver.toURL())) {
+                        Log.w(Constants.TAG, "No pinned certificate for this host in OpenKeychain's assets.");
+                        reason = FailureReason.NO_PINNED_CERTIFICATE;
+                        return reason;
+                    }
+
+                    client.newCall(new Request.Builder().url(newKeyserver.toURL()).build()).execute();
                 } catch (TlsHelper.TlsHelperException e) {
                     reason = FailureReason.CONNECTION_FAILED;
                 } catch (MalformedURLException | URISyntaxException e) {

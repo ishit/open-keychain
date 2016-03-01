@@ -18,6 +18,7 @@
 package org.sufficientlysecure.keychain.ui.adapter;
 
 import android.content.Context;
+import android.support.annotation.Nullable;
 import android.support.v4.content.AsyncTaskLoader;
 
 import org.sufficientlysecure.keychain.Constants;
@@ -26,8 +27,12 @@ import org.sufficientlysecure.keychain.keyimport.ImportKeysListEntry;
 import org.sufficientlysecure.keychain.keyimport.Keyserver;
 import org.sufficientlysecure.keychain.operations.results.GetKeyResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
+import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
+import org.sufficientlysecure.keychain.service.input.RequiredInputParcel;
 import org.sufficientlysecure.keychain.util.Log;
+import org.sufficientlysecure.keychain.util.ParcelableProxy;
 import org.sufficientlysecure.keychain.util.Preferences;
+import org.sufficientlysecure.keychain.util.orbot.OrbotHelper;
 
 import java.util.ArrayList;
 
@@ -38,15 +43,27 @@ public class ImportKeysListCloudLoader
 
     Preferences.CloudSearchPrefs mCloudPrefs;
     String mServerQuery;
+    private ParcelableProxy mParcelableProxy;
 
     private ArrayList<ImportKeysListEntry> mEntryList = new ArrayList<>();
     private AsyncTaskResultWrapper<ArrayList<ImportKeysListEntry>> mEntryListWrapper;
 
-    public ImportKeysListCloudLoader(Context context, String serverQuery, Preferences.CloudSearchPrefs cloudPrefs) {
+    /**
+     * Searches a keyserver as specified in cloudPrefs, using an explicit proxy if passed
+     *
+     * @param serverQuery     string to search on servers for. If is a fingerprint,
+     *                        will enforce fingerprint check
+     * @param cloudPrefs      contains keyserver to search on, whether to search on the keyserver,
+     *                        and whether to search keybase.io
+     * @param parcelableProxy explicit proxy to use. If null, will retrieve from preferences
+     */
+    public ImportKeysListCloudLoader(Context context, String serverQuery, Preferences.CloudSearchPrefs cloudPrefs,
+                                     @Nullable ParcelableProxy parcelableProxy) {
         super(context);
         mContext = context;
         mServerQuery = serverQuery;
         mCloudPrefs = cloudPrefs;
+        mParcelableProxy = parcelableProxy;
     }
 
     @Override
@@ -95,9 +112,32 @@ public class ImportKeysListCloudLoader
      * Query keyserver
      */
     private void queryServer(boolean enforceFingerprint) {
+        ParcelableProxy parcelableProxy;
+
+        if (mParcelableProxy == null) {
+            // no explicit proxy specified, fetch from preferences
+            if (OrbotHelper.isOrbotInRequiredState(mContext)) {
+                parcelableProxy = Preferences.getPreferences(mContext).getProxyPrefs()
+                        .parcelableProxy;
+            } else {
+                // user needs to enable/install orbot
+                mEntryList.clear();
+                GetKeyResult pendingResult = new GetKeyResult(null,
+                        RequiredInputParcel.createOrbotRequiredOperation(),
+                        new CryptoInputParcel());
+                mEntryListWrapper = new AsyncTaskResultWrapper<>(mEntryList, pendingResult);
+                return;
+            }
+        } else {
+            parcelableProxy = mParcelableProxy;
+        }
+
         try {
-            ArrayList<ImportKeysListEntry> searchResult
-                    = CloudSearch.search(mServerQuery, mCloudPrefs);
+            ArrayList<ImportKeysListEntry> searchResult = CloudSearch.search(
+                    mServerQuery,
+                    mCloudPrefs,
+                    parcelableProxy.getProxy()
+            );
 
             mEntryList.clear();
             // add result to data

@@ -57,7 +57,7 @@ import org.sufficientlysecure.keychain.ui.adapter.SubkeysAdapter;
 import org.sufficientlysecure.keychain.ui.adapter.SubkeysAddedAdapter;
 import org.sufficientlysecure.keychain.ui.adapter.UserIdsAdapter;
 import org.sufficientlysecure.keychain.ui.adapter.UserIdsAddedAdapter;
-import org.sufficientlysecure.keychain.ui.base.CryptoOperationFragment;
+import org.sufficientlysecure.keychain.ui.base.QueueingCryptoOperationFragment;
 import org.sufficientlysecure.keychain.ui.dialog.AddSubkeyDialogFragment;
 import org.sufficientlysecure.keychain.ui.dialog.AddUserIdDialogFragment;
 import org.sufficientlysecure.keychain.ui.dialog.EditSubkeyDialogFragment;
@@ -68,7 +68,9 @@ import org.sufficientlysecure.keychain.ui.util.Notify;
 import org.sufficientlysecure.keychain.util.Log;
 import org.sufficientlysecure.keychain.util.Passphrase;
 
-public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, OperationResult>
+import java.util.Date;
+
+public class EditKeyFragment extends QueueingCryptoOperationFragment<SaveKeyringParcel, OperationResult>
         implements LoaderManager.LoaderCallbacks<Cursor> {
 
     public static final String ARG_DATA_URI = "uri";
@@ -151,7 +153,7 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
                         if (mDataUri == null) {
                             returnKeyringParcel();
                         } else {
-                            cryptoOperation(new CryptoInputParcel());
+                            cryptoOperation(new CryptoInputParcel(new Date()));
                         }
                     }
                 }, new OnClickListener() {
@@ -192,7 +194,7 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
     private void loadData(Uri dataUri) {
         mDataUri = dataUri;
 
-        Log.i(Constants.TAG, "mDataUri: " + mDataUri.toString());
+        Log.i(Constants.TAG, "mDataUri: " + mDataUri);
 
         // load the secret key ring. we do verify here that the passphrase is correct, so cached won't do
         try {
@@ -221,14 +223,16 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
         getLoaderManager().initLoader(LOADER_ID_USER_IDS, null, EditKeyFragment.this);
         getLoaderManager().initLoader(LOADER_ID_SUBKEYS, null, EditKeyFragment.this);
 
-        mUserIdsAdapter = new UserIdsAdapter(getActivity(), null, 0, mSaveKeyringParcel);
+        mUserIdsAdapter = new UserIdsAdapter(getActivity(), null, 0);
+        mUserIdsAdapter.setEditMode(mSaveKeyringParcel);
         mUserIdsList.setAdapter(mUserIdsAdapter);
 
         // TODO: SaveParcel from savedInstance?!
         mUserIdsAddedAdapter = new UserIdsAddedAdapter(getActivity(), mSaveKeyringParcel.mAddUserIds, false);
         mUserIdsAddedList.setAdapter(mUserIdsAddedAdapter);
 
-        mSubkeysAdapter = new SubkeysAdapter(getActivity(), null, 0, mSaveKeyringParcel);
+        mSubkeysAdapter = new SubkeysAdapter(getActivity(), null, 0);
+        mSubkeysAdapter.setEditMode(mSaveKeyringParcel);
         mSubkeysList.setAdapter(mSubkeysAdapter);
 
         mSubkeysAddedAdapter = new SubkeysAddedAdapter(getActivity(), mSaveKeyringParcel.mAddSubKeys, false);
@@ -278,7 +282,7 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
             case LOADER_ID_USER_IDS: {
                 Uri baseUri = UserPackets.buildUserIdsUri(mDataUri);
                 return new CursorLoader(getActivity(), baseUri,
-                        UserIdsAdapter.USER_IDS_PROJECTION, null, null, null);
+                        UserIdsAdapter.USER_PACKETS_PROJECTION, null, null, null);
             }
 
             case LOADER_ID_SUBKEYS: {
@@ -431,9 +435,9 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
                         }
                         // toggle
                         change.mDummyStrip = !change.mDummyStrip;
-                        if (change.mDummyStrip && change.mMoveKeyToCard) {
+                        if (change.mDummyStrip && change.mMoveKeyToSecurityToken) {
                             // User had chosen to divert key, but now wants to strip it instead.
-                            change.mMoveKeyToCard = false;
+                            change.mMoveKeyToSecurityToken = false;
                         }
                         break;
                     }
@@ -475,8 +479,8 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
 //                            break;
 //                        }
 //                        // toggle
-//                        change.mMoveKeyToCard = !change.mMoveKeyToCard;
-//                        if (change.mMoveKeyToCard && change.mDummyStrip) {
+//                        change.mMoveKeyToSecurityToken = !change.mMoveKeyToSecurityToken;
+//                        if (change.mMoveKeyToSecurityToken && change.mDummyStrip) {
 //                            // User had chosen to strip key, but now wants to divert it.
 //                            change.mDummyStrip = false;
 //                        }
@@ -552,7 +556,7 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
         // pre-fill out primary name
         String predefinedName = KeyRing.splitUserId(mPrimaryUserId).name;
         AddUserIdDialogFragment addUserIdDialog = AddUserIdDialogFragment.newInstance(messenger,
-                predefinedName);
+                predefinedName, true);
 
         addUserIdDialog.show(getActivity().getSupportFragmentManager(), "addUserIdDialog");
     }
@@ -608,7 +612,7 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
                 new SingletonResult(SingletonResult.RESULT_ERROR, reason));
 
         // Finish with result
-        getActivity().setResult(EditKeyActivity.RESULT_OK, intent);
+        getActivity().setResult(Activity.RESULT_OK, intent);
         getActivity().finish();
     }
 
@@ -618,13 +622,16 @@ public class EditKeyFragment extends CryptoOperationFragment<SaveKeyringParcel, 
     }
 
     @Override
-    public void onCryptoOperationSuccess(OperationResult result) {
+    public void onQueuedOperationSuccess(OperationResult result) {
+
+        // null-protected from Queueing*Fragment
+        Activity activity = getActivity();
 
         // if good -> finish, return result to showkey and display there!
         Intent intent = new Intent();
         intent.putExtra(OperationResult.EXTRA_RESULT, result);
-        getActivity().setResult(EditKeyActivity.RESULT_OK, intent);
-        getActivity().finish();
+        activity.setResult(Activity.RESULT_OK, intent);
+        activity.finish();
 
     }
 

@@ -9,6 +9,7 @@
   <string name="title_decrypt">Decodifica</string>
   <string name="title_add_subkey">Aggiungi Sottochiave</string>
   <string name="title_edit_key">Modifica Chiave</string>
+  <string name="title_linked_create">Creare un\'identità collegata</string>
   <string name="title_preferences">Impostazioni</string>
   <string name="title_api_registered_apps">Apps</string>
   <string name="title_key_server_preference">Server chiavi OpenPGP</string>
@@ -20,8 +21,8 @@
   <string name="title_encrypt_to_file">Codifica File</string>
   <string name="title_decrypt_to_file">Decodifica File</string>
   <string name="title_import_keys">Importa Chiavi</string>
-  <string name="title_export_key">Esporta Chiave</string>
-  <string name="title_export_keys">Esporta Chiavi</string>
+  <string name="title_export_key">Backup chiave</string>
+  <string name="title_export_keys">Backup chiavi</string>
   <string name="title_key_not_found">Chiave Non Trovata</string>
   <string name="title_send_key">Carica sul Server delle Chiavi</string>
   <string name="title_certify_key">Conferma chiave</string>
@@ -29,17 +30,20 @@
   <string name="title_help">Aiuto</string>
   <string name="title_log_display">Registro</string>
   <string name="title_exchange_keys">Scambia le chiavi</string>
-  <string name="title_advanced_key_info">Informazioni avanzate</string>
   <string name="title_delete_secret_key">Cancellare la TUA chiave \'%s\'?</string>
-  <string name="title_export_log">Esporta log</string>
   <string name="title_manage_my_keys">Gestisci le mie chiavi</string>
   <!--section-->
   <string name="section_user_ids">Identità</string>
-  <string name="section_yubikey">YubiKey</string>
   <string name="section_should_you_trust">Ci si potrà fidare di questa chiave?</string>
+  <string name="section_proof_details">Verifica prova</string>
   <string name="section_keys">Sottochiavi</string>
-  <string name="section_cloud_search">Ricerca</string>
-  <string name="section_passphrase_cache">Trattamento Password/PIN</string>
+  <string name="section_cloud_search">Ricerca chiave</string>
+  <string name="section_cloud_search_summary">Server chiavi, keybase.io</string>
+  <string name="section_passphrase_cache">Password e PIN</string>
+  <string name="section_proxy_settings">Rete anonimata</string>
+  <string name="section_gui">Interfaccia</string>
+  <string name="section_sync_settings">Sincronizzazione</string>
+  <string name="section_experimental_features">Caratteristiche sperimentali</string>
   <string name="section_certify">Conferma</string>
   <string name="section_actions">Azioni</string>
   <string name="section_share_key">Chiave</string>
@@ -53,6 +57,8 @@
   <string name="btn_decrypt_verify_file">Decodifica, verifica e salva su file</string>
   <string name="btn_encrypt_share_file">Codifica e condividi file</string>
   <string name="btn_encrypt_save_file">Codifica e salva file</string>
+  <string name="btn_save_file">Salva file</string>
+  <string name="btn_save">Salva</string>
   <string name="btn_view_log">Mostra log</string>
   <string name="btn_do_not_save">Annulla</string>
   <string name="btn_delete">Elimina</string>
@@ -63,12 +69,9 @@
   <string name="btn_back">Precedente</string>
   <string name="btn_no">No</string>
   <string name="btn_match">Impronte digitali ugali</string>
-  <string name="btn_share_encrypted_signed">Codifica e condividi testo</string>
-  <string name="btn_copy_encrypted_signed">Codifica e copia testo</string>
   <string name="btn_view_cert_key">Mostra chiave di certificazione</string>
   <string name="btn_create_key">Crea chiave</string>
   <string name="btn_add_files">Aggiungi file(s)</string>
-  <string name="btn_share_decrypted_text">Condividi testo decifrato</string>
   <string name="btn_copy_decrypted_text">Copia testo decifrato</string>
   <string name="btn_decrypt_clipboard">Leggi dagli appunti</string>
   <string name="btn_decrypt_files">Seleziona input file</string>
@@ -79,10 +82,10 @@
   <string name="btn_add_keyserver">Aggiungi</string>
   <string name="btn_save_default">Salva come predefinito</string>
   <string name="btn_saved">Salvato!</string>
+  <!--Content Description-->
   <!--menu-->
   <string name="menu_preferences">Impostazioni</string>
   <string name="menu_help">Aiuto</string>
-  <string name="menu_export_key">Esporta su un file</string>
   <string name="menu_delete_key">Cancella chiave</string>
   <string name="menu_manage_keys">Gestisci mie chiavi</string>
   <string name="menu_search">Cerca</string>
@@ -92,9 +95,7 @@
   <string name="menu_select_all">Seleziona tutto</string>
   <string name="menu_export_all_keys">Esporta tutte le chiavi</string>
   <string name="menu_update_all_keys">Aggiorna tutte le chiavi</string>
-  <string name="menu_advanced">Informazioni avanzate</string>
-  <string name="menu_certify_fingerprint">Confermare tramite il confronto delle impronte digitali</string>
-  <string name="menu_export_log">Esporta log</string>
+  <string name="menu_keyserver_add">Aggiungi</string>
   <!--label-->
   <string name="label_message">Testo</string>
   <string name="label_file">File</string>
@@ -110,17 +111,11 @@
   <string name="label_file_ascii_armor">Abilita Armatura ASCII</string>
   <string name="label_write_version_header">Fai sapere agli altri che utilizzi OpenKeychain</string>
   <string name="label_write_version_header_summary">Scrive \'OpenKeychain v2.7\' nelle firme OpenPGP, testi cifrati e chiavi esportate</string>
-  <string name="label_use_default_yubikey_pin">Utilizza il PIN predefinito di YubiKey</string>
-  <string name="label_use_num_keypad_for_yubikey_pin">Utilizza la tastiera numerica per il PIN di YubiKey</string>
-  <string name="label_label_use_default_yubikey_pin_summary">Usa PIN predefinito (123456) per accedere YubiKeys tramite NFC</string>
-  <string name="label_asymmetric_from">Firmato da:</string>
-  <string name="label_to">Codifica per:</string>
   <string name="label_delete_after_encryption">Elimina file dopo la codifica</string>
   <string name="label_delete_after_decryption">Elimina dopo la decodifica</string>
   <string name="label_encryption_algorithm">Algoritmo di codifica</string>
   <string name="label_hash_algorithm">Algoritmo Hash</string>
   <string name="label_symmetric">Codifica con password</string>
-  <string name="label_passphrase_cache_ttl">Tempo da ricordare</string>
   <string name="label_passphrase_cache_subs">Ricorda le password di sottochiave</string>
   <string name="label_message_compression">Compressione testo</string>
   <string name="label_file_compression">Compressione file</string>
@@ -136,20 +131,38 @@
   <string name="label_name">Nome</string>
   <string name="label_comment">Commento</string>
   <string name="label_email">Email</string>
-  <string name="label_send_key">Sincronizza con il cloud</string>
   <string name="label_fingerprint">Impronta</string>
   <string name="expiry_date_dialog_title">Impostare la data di scadenza</string>
-  <string name="label_first_keyserver_is_used">(Primo server delle chiavi elencato è il preferito)</string>
+  <string name="label_keyservers_title">Server chiavi</string>
+  <string name="label_keyserver_settings_hint">Trascina per cambiare ordine, toccare per modificare/cancellare</string>
+  <string name="label_selected_keyserver_title">Server chiavi scelto</string>
   <string name="label_preferred">preferiti</string>
   <string name="label_enable_compression">Abilitare compressione</string>
   <string name="label_encrypt_filenames">Codifica nome dei file</string>
   <string name="label_hidden_recipients">Nascondi destinatari</string>
-  <string name="label_verify_keyserver">Verificare server chiavi</string>
-  <string name="label_enter_keyserver_url">Inserisci URL server chiavi</string>
+  <string name="label_keyserver_dialog_delete">Cancella server chiavi</string>
   <string name="pref_keyserver">Server chiavi OpenPGP</string>
   <string name="pref_keyserver_summary">Cerca chiavi su server chiavi OpenPGP selezionati (protocollo HKP)</string>
-  <string name="user_id_no_name">&lt;nessun nome&gt;</string>
-  <string name="none">&lt;nessuno&gt;</string>
+  <string name="pref_keybase">keybase.io</string>
+  <string name="pref_keybase_summary">Ricerca chiavi su keybase.io</string>
+  <!--label shown in Android settings under the OpenKeychain account-->
+  <string name="label_experimental_settings_desc_title">Attenzione</string>
+  <!--Proxy Preferences-->
+  <string name="pref_proxy_type_title">Tipo proxy</string>
+  <!--proxy type choices and values-->
+  <string name="pref_proxy_type_choice_http">HTTP</string>
+  <string name="pref_proxy_type_choice_socks">SOCKS</string>
+  <!--OrbotHelper strings-->
+  <!--InstallDialogFragment strings-->
+  <string name="orbot_install_dialog_title">Installa Orbot per usare Tor?</string>
+  <string name="orbot_install_dialog_install">Installa</string>
+  <string name="orbot_install_dialog_content">Orbot deve essere installato e attivato per fare attraversare il traffico dei dati tramite proxy. Vuoi installare Orbot?</string>
+  <string name="orbot_install_dialog_cancel">Annulla</string>
+  <!--StartOrbotDialogFragment strings-->
+  <string name="orbot_start_dialog_title">Attivare Orbot?</string>
+  <string name="orbot_start_btn">Attivare Orbot</string>
+  <string name="orbot_start_dialog_start">Attivare Orbot</string>
+  <string name="orbot_start_dialog_cancel">Annulla</string>
   <plurals name="n_keys">
     <item quantity="one">1 chiave</item>
     <item quantity="other">%d chiavi</item>
@@ -187,11 +200,24 @@
   <string name="flag_encrypt">Codifica</string>
   <string name="flag_authenticate">Convalida</string>
   <!--sentences-->
+  <string name="wrong_passphrase">Password errata</string>
   <string name="no_filemanager_installed">Nessun gestore file compatibile installato.</string>
-  <string name="passphrase_for_symmetric_encryption">Codifica Simmetrica.</string>
+  <string name="passphrases_do_not_match">Le password non corrispondono.</string>
+  <string name="passphrase_must_not_be_empty">Si prega di inserire una password.</string>
+  <string name="passphrase_for">Inserisci la password per \'%s\'</string>
+  <string name="pin_for">Inserisci il PIN per \'%s\'</string>
+  <string name="file_delete_confirmation_title">Eliminare i file originali?</string>
+  <string name="file_delete_confirmation">I seguenti file verranno cancellati:%s</string>
+  <string name="file_delete_successful">%1$d di %2$d file sono stati cancellati.%3$s</string>
+  <string name="no_file_selected">Nessun file selezionato.</string>
   <string name="encrypt_sign_successful">Firmato e/o codificato con successo.</string>
   <string name="encrypt_sign_clipboard_successful">Firmato e/o codificato con successo negli appunti.</string>
   <string name="select_encryption_key">Seleziona almeno una chiave di codifica.</string>
+  <string name="error_no_encryption_or_signature_key">Selezionare almeno una chiave per la cifratura o una chiave per la firma.</string>
+  <string name="specify_file_to_encrypt_to">Per favore specifica il file da codificare entro.\nATTENZIONE: Il file sarà sovrascritto se esistente.</string>
+  <string name="specify_file_to_decrypt_to">Per favore specifica il file da decifrare entro.\nATTENZIONE: Il file sarà sovrascritto se esistente.</string>
+  <string name="key_deletion_confirmation_multi">Vuoi veramente eliminare tutte le chiavi selezionate?</string>
+  <string name="public_key_deletetion_confirmation">Elimnina chiave \'%s\'?</string>
   <string name="also_export_secret_keys">Esporta anche chiave segreta</string>
   <string name="reinstall_openkeychain">Hai riscontrato un bug noto con Android. Si prega di reinstallare OpenKeychain se vuoi collegare i tuoi contatti con le chiavi.</string>
   <string name="key_exported">1 chiave esportata correttamente.</string>
@@ -207,32 +233,46 @@
   <string name="nfc_successful">Chiave correttamente inviata tramite NFC Beam!</string>
   <string name="key_copied_to_clipboard">Chiave copiata negli appunti!</string>
   <string name="fingerprint_copied_to_clipboard">Impronta copiata negli appunti!</string>
-  <string name="key_too_big_for_sharing">Chiave troppo grande per essere condivisa in questo modo!</string>
+  <string name="select_key_to_certify">Per favore seleziona una chiave da utilizzare per la conferma!</string>
   <string name="text_copied_to_clipboard">Il testo è stato copiato sulla lavagna!</string>
   <!--errors
          no punctuation, all lowercase,
          they will be put after "error_message", e.g. "Error: file not found"-->
+  <string name="error_file_delete_failed">non sono stati cancellati. Cancellare manualmente!</string>
+  <string name="error_file_added_already">%s è già stato aggiunto.</string>
   <string name="error_file_not_found">File non trovato</string>
   <string name="error_no_secret_key_found">nessuna chiave privata adatta trovata</string>
   <string name="error_external_storage_not_ready">memoria esterna non pronta</string>
   <string name="error_key_size_minimum512bit">La grandezza della chiave deve essere almeno di 512bit</string>
   <string name="error_unknown_algorithm_choice">opzione algoritmo sconosciuta</string>
+  <string name="error_user_id_no_email">nessun indirizzo di posta elettronica trovato</string>
   <string name="error_key_needs_a_user_id">neccessaria almeno una identità</string>
+  <string name="error_no_signature_passphrase">nessuna password</string>
   <string name="error_no_signature_key">nessuna chiave di firma inserita</string>
   <string name="error_invalid_data">Contenuti OpenPGP firmati o codificati non validi!</string>
   <string name="error_integrity_check_failed">Controllo di integrita\' fallito! I dati sono stati modificati!</string>
+  <string name="error_wrong_passphrase">Password errata</string>
   <string name="error_could_not_extract_private_key">impossibile estrarre la chiave privata</string>
   <!--errors without preceeding Error:-->
   <string name="error_jelly_bean_needed">Devi avere Android 4.1 per usare Android NFC Beam!</string>
+  <string name="error_nfc_needed">NFC deve essere abilitato!</string>
   <string name="error_nothing_import">Nessuna chiave trovata!</string>
+  <string name="error_nothing_import_selected">Nessune chiavi selezionate per l\'importazione!</string>
   <string name="error_contacts_key_id_missing">Recupero dell\'ID della chiave dai contatti fallito!</string>
   <string name="error_generic_report_bug">Si è verificato un errore generico, si prega di creare una nuova segnalazione di errore per OpenKeychain.</string>
   <!--results shown after decryption/verification-->
   <string name="decrypt_result_no_signature">Non Firmato</string>
   <string name="decrypt_result_invalid_signature">Firma non valida!</string>
+  <string name="decrypt_result_signature_uncertified">Firmato da chiave <b> non confermata </b></string>
+  <string name="decrypt_result_signature_secret">Firmato con tua chiave</string>
+  <string name="decrypt_result_signature_certified">Firmato con chiave confermata</string>
+  <string name="decrypt_result_signature_expired_key">Firmato con chiave <b>scaduta</b>!</string>
+  <string name="decrypt_result_signature_revoked_key">Firmato con chiave <b>revocata</b>!</string>
+  <string name="decrypt_result_signature_missing_key">Firmato con chiave <b>pubblica sconusciuta</b></string>
   <string name="decrypt_result_encrypted">Codificato</string>
   <string name="decrypt_result_not_encrypted">Non Codificato</string>
   <string name="decrypt_result_action_show">Mostra</string>
+  <string name="decrypt_invalid_button">Capisco i rischi, visualizza!</string>
   <!--Add keys-->
   <string name="add_keys_my_key">Mia chiave:</string>
   <!--progress dialogs, usually ending in '…'-->
@@ -241,6 +281,7 @@
   <string name="progress_cancelling">cancellando...</string>
   <string name="progress_saving">salvataggio...</string>
   <string name="progress_importing">importazione...</string>
+  <string name="progress_updating">Aggiorna chiavi...</string>
   <string name="progress_exporting">esportazione...</string>
   <string name="progress_uploading">caricamento...</string>
   <string name="progress_building_key">fabbricazione chiave...</string>
@@ -259,6 +300,9 @@
   <string name="progress_modify_subkeyrevoke">Revoca sottochiave...</string>
   <string name="progress_modify_subkeystrip">pulizia sottochiavi...</string>
   <string name="progress_modify_subkeyadd">Aggiunta sottochiave...</string>
+  <string name="progress_modify_passphrase">cambiando la password...</string>
+  <string name="progress_modify_pin">cambiando PIN...</string>
+  <string name="progress_modify_admin_pin">cambiando Admin PIN...</string>
   <plurals name="progress_exporting_key">
     <item quantity="one">esportazione chiave...</item>
     <item quantity="other">esportazione chiavi...</item>
@@ -269,8 +313,8 @@
   <string name="progress_encrypting">codifica dati...</string>
   <string name="progress_decrypting">decodifica dati...</string>
   <string name="progress_preparing_signature">preparazione firma...</string>
-  <string name="progress_generating_signature">generazione firma...</string>
   <string name="progress_processing_signature">elaborazione firma...</string>
+  <string name="progress_generating_signature">generazione firma...</string>
   <string name="progress_verifying_signature">verifica firma...</string>
   <string name="progress_signing">firma...</string>
   <string name="progress_certifying">certificazione...</string>
@@ -284,10 +328,6 @@
   <string name="progress_con_reimport">consolidazione: reimportazione...</string>
   <!--action strings-->
   <!--key bit length selections-->
-  <string name="key_size_512">512</string>
-  <string name="key_size_768">768</string>
-  <string name="key_size_1024">1024</string>
-  <string name="key_size_1536">1536</string>
   <string name="key_size_2048">2048</string>
   <string name="key_size_3072">3072</string>
   <string name="key_size_4096">4096</string>
@@ -310,30 +350,24 @@
   <!--Help-->
   <string name="help_tab_start">Inizia</string>
   <string name="help_tab_faq">FAQ</string>
+  <string name="help_tab_wot">Conferma chiave</string>
   <string name="help_tab_nfc_beam">NFC Beam</string>
   <string name="help_tab_changelog">Novita\'</string>
   <string name="help_tab_about">Info</string>
   <string name="help_about_version">Versione:</string>
   <!--Import-->
   <string name="import_tab_keyserver">Server delle chiavi</string>
-  <string name="import_tab_cloud">Ricerca Cloud</string>
   <string name="import_tab_direct">File/Appunti</string>
   <string name="import_tab_qr_code">Codice QR/NFC</string>
   <string name="import_import">Importa chiavi selezionate</string>
   <string name="import_qr_code_wrong">Codica QR deformato! Prova di nuovo!</string>
+  <string name="import_qr_code_button">Scansione codice QR</string>
   <!--Import from URL-->
   <!--Generic result toast-->
+  <string name="snackbar_details">Dettagli</string>
   <string name="with_warnings">, con avvisi</string>
   <string name="with_cancelled">, fino all\'annullamento</string>
   <!--Import result toast-->
-  <plurals name="import_keys_added_and_updated_1">
-    <item quantity="one">Chiave importata correttamente.</item>
-    <item quantity="other">%1$d chiavi importate correttamente.</item>
-  </plurals>
-  <plurals name="import_keys_added_and_updated_2">
-    <item quantity="one">e chiave%2$s aggiornata.</item>
-    <item quantity="other">e aggiornate %1$d chiavi%2$s.</item>
-  </plurals>
   <plurals name="import_keys_added">
     <item quantity="one">Chiave%2$s importata correttamente.</item>
     <item quantity="other">%1$d chiavi%2$s importate correttamente.</item>
@@ -355,6 +389,7 @@
   <!--Delete result toast-->
   <string name="delete_nothing">Niente da cancellare.</string>
   <string name="delete_cancelled">Operazione di eliminazione cancellata.</string>
+  <!--Revoke result toast (snackbar)-->
   <!--Certify result toast-->
   <!--Intent labels-->
   <string name="intent_decrypt_file">Decodifica File con OpenKeychain</string>
@@ -364,6 +399,7 @@
   <!--Remote API-->
   <string name="api_settings_no_key">Nessuna chiave selezionata</string>
   <string name="api_settings_select_key">Seleziona chiave</string>
+  <string name="api_settings_create_key">Crea chiave nuova</string>
   <string name="api_settings_save">Salva</string>
   <string name="api_settings_save_msg">L\'account è stato salvato</string>
   <string name="api_settings_cancel">Annulla</string>
@@ -371,7 +407,6 @@
   <string name="api_settings_start">Avvia applicazione</string>
   <string name="api_settings_delete_account">Cancella account</string>
   <string name="api_settings_package_name">Nome Pacchetto</string>
-  <string name="api_settings_package_signature">SHA-256 della Firma del Pacchetto</string>
   <string name="api_settings_settings">Impostazioni</string>
   <string name="api_settings_key">Chiave account:</string>
   <string name="api_settings_accounts_empty">Nessun account collegato a questa applicazione</string>
@@ -382,14 +417,15 @@ Permetti accesso?\n\nATTENZIONE: Se non sai perche\' questo schermata e\' appars
   <string name="api_register_allow">Permetti accesso</string>
   <string name="api_register_disallow">Nega accesso</string>
   <string name="api_register_error_select_key">Per favore selezionare una chiave!</string>
-  <string name="api_select_pub_keys_missing_text">Nessuna chiave trovata per queste identità:</string>
-  <string name="api_select_pub_keys_dublicates_text">Esistono piu\' di una chiave per queste identità:</string>
   <string name="api_select_pub_keys_text">Per favore ricontrolla la lista destinatari!</string>
   <string name="api_select_pub_keys_text_no_user_ids">Per favore seleziona i destinatari!</string>
   <string name="api_error_wrong_signature">Controllo della firma fallito! Hai installato questa app da una fonte diversa? Se sei sicuro che non sia un attacco, revoca la registrazione di questa app in OpenKeychain e dopo registra di nuovo l\'app.</string>
   <!--Share-->
   <string name="share_qr_code_dialog_title">Condividi tramite Codice QR</string>
   <string name="share_nfc_dialog">Condividi tramite NFC</string>
+  <!--retry upload dialog-->
+  <!--Delete or revoke private key dialog-->
+  <!--Delete Or Revoke Dialog spinner-->
   <!--Key list-->
   <plurals name="key_list_selected_keys">
     <item quantity="one">1 chiave selezionata.</item>
@@ -397,9 +433,7 @@ Permetti accesso?\n\nATTENZIONE: Se non sai perche\' questo schermata e\' appars
   </plurals>
   <string name="key_list_empty_text1">Nessuna chiave trovata!</string>
   <string name="key_list_filter_show_all">Mostra tutte le chiavi</string>
-  <string name="key_list_filter_show_certified">Mostra solo le chiavi certificate</string>
   <!--Key view-->
-  <string name="key_view_action_edit">Modifica chiave</string>
   <string name="key_view_action_encrypt">Codifica Testo</string>
   <string name="key_view_action_encrypt_files">documenti</string>
   <string name="key_view_action_update">Aggiorna dal server delle chiavi</string>
@@ -412,10 +446,6 @@ Permetti accesso?\n\nATTENZIONE: Se non sai perche\' questo schermata e\' appars
   <string name="key_view_tab_certs">Certificati</string>
   <string name="user_id_info_revoked_title">Revocato</string>
   <string name="user_id_info_revoked_text">Questa identità è stata revocata dal suo proprietario. Non è più valida.</string>
-  <string name="user_id_info_certified_title">Certificato</string>
-  <string name="user_id_info_certified_text">Questa identità è stata certificata da te.</string>
-  <string name="user_id_info_uncertified_title">Non certificato</string>
-  <string name="user_id_info_uncertified_text">Questa identità non è stata ancora certificata. Non puoi esser sicuro che l\'identità corrisponda veramente ad una specifica persona.</string>
   <string name="user_id_info_invalid_title">Non valido</string>
   <string name="user_id_info_invalid_text">C\'è qualcosa che non va con questa identità!</string>
   <!--Key trust-->
@@ -445,7 +475,7 @@ Permetti accesso?\n\nATTENZIONE: Se non sai perche\' questo schermata e\' appars
   <string name="create_key_custom">(personalizza la configurazione della chiave)</string>
   <string name="create_key_edit">Cambia configurazione della chiave</string>
   <!--View key-->
-  <!--Add keyserver-->
+  <!--Add/Edit keyserver-->
   <!--Navigation Drawer-->
   <string name="nav_keys">Chiavi</string>
   <string name="nav_apps">Apps</string>
@@ -590,7 +620,6 @@ Permetti accesso?\n\nATTENZIONE: Se non sai perche\' questo schermata e\' appars
   <string name="msg_cr_error_no_master">Nessuna opzione della chiave principale specificata!</string>
   <string name="msg_cr_error_no_certify">La chiave principale deve avere la caratteristica di certificazione!</string>
   <string name="msg_cr_error_null_expiry">La data di scadenza non può essere \'come prima\' sulla creazione di chiavi. Questo è un errore di programmazione, si prega di inviare una segnalazione di bug!</string>
-  <string name="msg_cr_error_keysize_512">La grandezza della chiave deve essere di 512bit o maggiore</string>
   <string name="msg_cr_error_no_keysize">Nessuna curva ellittica specificata! Questo è un errore di programmazione, per favore invia una segnalazione!</string>
   <!--modifySecretKeyRing-->
   <string name="msg_mr">Modifica del portachiavi %s</string>
@@ -665,14 +694,17 @@ Permetti accesso?\n\nATTENZIONE: Se non sai perche\' questo schermata e\' appars
   <string name="msg_crt_warn_not_found">Chiave non trovata!</string>
   <string name="msg_crt_upload_success">Chiave caricata con successo sul server</string>
   <string name="msg_del_error_empty">Niente da cancellare!</string>
+  <!--Linked Identity verification-->
   <string name="msg_acc_saved">Account salvato</string>
   <string name="msg_download_no_pgp_parts">DA FARE: plurali!</string>
   <plurals name="error_import_non_pgp_part">
     <item quantity="one">parte del file caricato e\' un oggetto OpenPGP valido, ma non una chave OpenPGP</item>
     <item quantity="other">parti del file caricato sono oggetti OpenPGP validi, ma non chavi OpenPGP</item>
   </plurals>
-  <!--Messages for Export Log operation-->
+  <!--Messages for Keybase Verification operation-->
+  <!--Messages for Mime parsing operation-->
   <!--PassphraseCache-->
+  <!--Keyserver sync-->
   <!--First Time-->
   <string name="first_time_text1">Riappropriati della tua privacy con OpenKeychain!</string>
   <string name="first_time_skip">Salta Installazione</string>
@@ -680,7 +712,6 @@ Permetti accesso?\n\nATTENZIONE: Se non sai perche\' questo schermata e\' appars
   <string name="section_certifier_id">Certificatore</string>
   <string name="section_cert">Dettagli Certificato</string>
   <string name="label_user_id">Identit</string>
-  <string name="unknown_uid">&lt;sconosciuto&gt;</string>
   <string name="empty_certs">Nessun certificato per questa chiave</string>
   <string name="label_revocation">Ragione della Revoca</string>
   <string name="label_cert_type">Tipo</string>
@@ -693,12 +724,14 @@ Permetti accesso?\n\nATTENZIONE: Se non sai perche\' questo schermata e\' appars
   <string name="unknown_algorithm">sconosciuto</string>
   <string name="can_sign_not">non può firmare</string>
   <string name="error_no_encrypt_subkey">Nessuna sottochiave di codifica disponibile!</string>
-  <string name="info_no_manual_account_creation">Non creare account OpenKeychain manualmente.\nPer ulteriori informazioni, vedere la Guida.</string>
   <string name="contact_show_key">Mostra chiave (%s)</string>
   <string name="error_no_file_selected">Seleziona almeno un file da codificare!</string>
   <string name="key_colon">Chiave:</string>
+  <!--Android Account-->
   <!--Passphrase wizard-->
   <!--TODO: rename all the things!-->
   <!--<string name="enter_passphrase_twice">Enter password twice</string>-->
   <!--<string name="nfc_text">Please place a NFC tag near your device</string>-->
+  <string name="file_saved">File salvato!</string>
+  <!--Other Linked Identity strings-->
 </resources>

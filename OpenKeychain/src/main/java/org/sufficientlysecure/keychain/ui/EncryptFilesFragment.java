@@ -18,23 +18,32 @@
 package org.sufficientlysecure.keychain.ui;
 
 
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+import android.Manifest;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Point;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.v4.app.FragmentActivity;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.widget.DefaultItemAnimator;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
@@ -47,15 +56,16 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import org.spongycastle.bcpg.CompressionAlgorithmTags;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.operations.results.SignEncryptResult;
 import org.sufficientlysecure.keychain.pgp.KeyRing;
-import org.sufficientlysecure.keychain.pgp.PgpConstants;
+import org.sufficientlysecure.keychain.pgp.PgpSecurityConstants;
 import org.sufficientlysecure.keychain.pgp.SignEncryptParcel;
-import org.sufficientlysecure.keychain.provider.TemporaryStorageProvider;
+import org.sufficientlysecure.keychain.provider.TemporaryFileProvider;
+import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.ui.adapter.SpacesItemDecoration;
 import org.sufficientlysecure.keychain.ui.base.CachingCryptoOperationFragment;
 import org.sufficientlysecure.keychain.ui.dialog.DeleteFileDialogFragment;
@@ -67,7 +77,6 @@ import org.sufficientlysecure.keychain.util.FileHelper;
 import org.sufficientlysecure.keychain.util.Log;
 import org.sufficientlysecure.keychain.util.Passphrase;
 import org.sufficientlysecure.keychain.util.Preferences;
-import org.sufficientlysecure.keychain.util.ShareHelper;
 
 public class EncryptFilesFragment
         extends CachingCryptoOperationFragment<SignEncryptParcel, SignEncryptResult> {
@@ -80,12 +89,14 @@ public class EncryptFilesFragment
 
     public static final int REQUEST_CODE_INPUT = 0x00007003;
     private static final int REQUEST_CODE_OUTPUT = 0x00007007;
+    private static final int REQUEST_PERMISSION_READ_EXTERNAL_STORAGE = 12;
 
     private boolean mUseArmor;
     private boolean mUseCompression;
     private boolean mDeleteAfterEncrypt;
     private boolean mEncryptFilenames;
     private boolean mHiddenRecipients = false;
+    private ArrayList<Uri> mPendingInputUris;
 
     private AfterEncryptAction mAfterEncryptAction;
     private enum AfterEncryptAction {
@@ -139,14 +150,17 @@ public class EncryptFilesFragment
                 addInputUri();
             }
         });
+        mSelectedFiles.setAdapter(mFilesAdapter);
 
         Bundle args = savedInstanceState == null ? getArguments() : savedInstanceState;
 
+        mPendingInputUris = new ArrayList<>();
+
         ArrayList<Uri> inputUris = args.getParcelableArrayList(ARG_URIS);
         if (inputUris != null) {
-            mFilesAdapter.addAll(inputUris);
+            mPendingInputUris.addAll(inputUris);
+            processPendingInputUris();
         }
-        mSelectedFiles.setAdapter(mFilesAdapter);
 
         return view;
     }
@@ -194,31 +208,112 @@ public class EncryptFilesFragment
     }
 
     private void addInputUri() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            FileHelper.openDocument(EncryptFilesFragment.this, "*/*", true, REQUEST_CODE_INPUT);
-        } else {
-            FileHelper.openFile(EncryptFilesFragment.this, mFilesAdapter.getModelCount() == 0 ?
-                            null : mFilesAdapter.getModelItem(mFilesAdapter.getModelCount() - 1).inputUri,
-                    "*/*", REQUEST_CODE_INPUT);
-        }
+        FileHelper.openDocument(EncryptFilesFragment.this, mFilesAdapter.getModelCount() == 0 ?
+                        null : mFilesAdapter.getModelItem(mFilesAdapter.getModelCount() - 1).inputUri,
+                "*/*", true, REQUEST_CODE_INPUT);
     }
 
-    private void addInputUri(Uri inputUri) {
-        if (inputUri == null) {
-            return;
+    public void addInputUri(Intent data) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
+            mPendingInputUris.add(data.getData());
+        } else {
+            if (data.getClipData() != null && data.getClipData().getItemCount() > 0) {
+                for (int i = 0; i < data.getClipData().getItemCount(); i++) {
+                    Uri uri = data.getClipData().getItemAt(i).getUri();
+                    if (uri != null) {
+                        mPendingInputUris.add(uri);
+                    }
+                }
+            } else {
+                // fallback, try old method to get single uri
+                mPendingInputUris.add(data.getData());
+            }
         }
 
-        try {
-            mFilesAdapter.add(inputUri);
-        } catch (IOException e) {
-            Notify.create(getActivity(),
-                    getActivity().getString(R.string.error_file_added_already, FileHelper.getFilename(getActivity(), inputUri)),
-                    Notify.Style.ERROR).show(this);
-            return;
+        // process pending uris
+        processPendingInputUris();
+    }
+
+    private void processPendingInputUris() {
+        Iterator<Uri> it = mPendingInputUris.iterator();
+        while (it.hasNext()) {
+            Uri inputUri = it.next();
+
+            if ( ! checkAndRequestReadPermission(inputUri)) {
+                // break out, don't process other uris and don't remove this one from queue
+                break;
+            }
+
+            try {
+                mFilesAdapter.add(inputUri);
+            } catch (IOException e) {
+                Notify.create(getActivity(),
+                        getActivity().getString(R.string.error_file_added_already, FileHelper.getFilename(getActivity(), inputUri)),
+                        Notify.Style.ERROR).show(this);
+                return;
+            }
+
+            // remove from pending input uris
+            it.remove();
         }
+
         mSelectedFiles.requestFocus();
     }
 
+    /**
+     * Request READ_EXTERNAL_STORAGE permission on Android >= 6.0 to read content from "file" Uris.
+     *
+     * This method returns true on Android < 6, or if permission is already granted. It
+     * requests the permission and returns false otherwise.
+     *
+     * see https://commonsware.com/blog/2015/10/07/runtime-permissions-files-action-send.html
+     */
+    private boolean checkAndRequestReadPermission(final Uri uri) {
+        if ( ! ContentResolver.SCHEME_FILE.equals(uri.getScheme())) {
+            return true;
+        }
+
+        // Additional check due to https://commonsware.com/blog/2015/11/09/you-cannot-hold-nonexistent-permissions.html
+        if (Build.VERSION.SDK_INT < VERSION_CODES.M) {
+            return true;
+        }
+
+        if (ContextCompat.checkSelfPermission(getActivity(), Manifest.permission.READ_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED) {
+            return true;
+        }
+
+        requestPermissions(
+                new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                REQUEST_PERMISSION_READ_EXTERNAL_STORAGE);
+
+        return false;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+
+        if (requestCode != REQUEST_PERMISSION_READ_EXTERNAL_STORAGE) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+            return;
+        }
+
+        boolean permissionWasGranted = grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+
+        if (permissionWasGranted) {
+            // permission granted -> restart processing uris
+            processPendingInputUris();
+        } else {
+            Toast.makeText(getActivity(), R.string.error_denied_storage_permission, Toast.LENGTH_LONG).show();
+            getActivity().setResult(Activity.RESULT_CANCELED);
+            getActivity().finish();
+        }
+    }
+
+    @TargetApi(VERSION_CODES.KITKAT)
     private void showOutputFileDialog() {
         if (mFilesAdapter.getModelCount() != 1) {
             throw new IllegalStateException();
@@ -227,38 +322,7 @@ public class EncryptFilesFragment
         String targetName =
                 (mEncryptFilenames ? "1" : FileHelper.getFilename(getActivity(), model.inputUri))
                         + (mUseArmor ? Constants.FILE_EXTENSION_ASC : Constants.FILE_EXTENSION_PGP_MAIN);
-        Uri inputUri = model.inputUri;
-        saveDocumentIntent(targetName, inputUri);
-    }
-
-    private void saveDocumentIntent(String targetName, Uri inputUri) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
-            File file = new File(inputUri.getPath());
-            File parentDir = file.exists() ? file.getParentFile() : Constants.Path.APP_DIR;
-            File targetFile = new File(parentDir, targetName);
-            FileHelper.saveFile(this, getString(R.string.title_encrypt_to_file),
-                    getString(R.string.specify_file_to_encrypt_to), targetFile, REQUEST_CODE_OUTPUT);
-        } else {
-            FileHelper.saveDocument(this, "*/*", targetName, REQUEST_CODE_OUTPUT);
-        }
-    }
-
-    public void addFile(Intent data) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
-            addInputUri(data.getData());
-        } else {
-            if (data.getClipData() != null && data.getClipData().getItemCount() > 0) {
-                for (int i = 0; i < data.getClipData().getItemCount(); i++) {
-                    Uri uri = data.getClipData().getItemAt(i).getUri();
-                    if (uri != null) {
-                        addInputUri(uri);
-                    }
-                }
-            } else {
-                // fallback, try old method to get single uri
-                addInputUri(data.getData());
-            }
-        }
+        FileHelper.saveDocument(this, targetName, REQUEST_CODE_OUTPUT);
     }
 
     @Override
@@ -276,18 +340,21 @@ public class EncryptFilesFragment
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.encrypt_save: {
+                hideKeyboard();
                 mAfterEncryptAction = AfterEncryptAction.SAVE;
-                cryptoOperation();
+                cryptoOperation(new CryptoInputParcel(new Date()));
                 break;
             }
             case R.id.encrypt_share: {
+                hideKeyboard();
                 mAfterEncryptAction = AfterEncryptAction.SHARE;
-                cryptoOperation();
+                cryptoOperation(new CryptoInputParcel(new Date()));
                 break;
             }
             case R.id.encrypt_copy: {
+                hideKeyboard();
                 mAfterEncryptAction = AfterEncryptAction.COPY;
-                cryptoOperation();
+                cryptoOperation(new CryptoInputParcel(new Date()));
                 break;
             }
             case R.id.check_use_armor: {
@@ -317,6 +384,17 @@ public class EncryptFilesFragment
             }
         }
         return true;
+    }
+
+    @Override
+    public void onPrepareOptionsMenu(Menu menu) {
+        super.onPrepareOptionsMenu(menu);
+
+        // Show save only on Android >= 4.4 (Document Provider)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
+            MenuItem save = menu.findItem(R.id.encrypt_save);
+            save.setVisible(false);
+        }
     }
 
     public void toggleUseArmor(MenuItem item, final boolean useArmor) {
@@ -386,7 +464,13 @@ public class EncryptFilesFragment
     }
 
     @Override
-    public void onCryptoOperationSuccess(final SignEncryptResult result) {
+    public void onQueuedOperationSuccess(final SignEncryptResult result) {
+        super.onQueuedOperationSuccess(result);
+
+        hideKeyboard();
+
+        // protected by Queueing*Fragment
+        FragmentActivity activity = getActivity();
 
         if (mDeleteAfterEncrypt) {
             // TODO make behavior coherent here
@@ -398,44 +482,48 @@ public class EncryptFilesFragment
                 public void onDeleted() {
                     if (mAfterEncryptAction == AfterEncryptAction.SHARE) {
                         // Share encrypted message/file
-                        startActivity(sendWithChooserExcludingEncrypt());
+                        startActivity(Intent.createChooser(createSendIntent(), getString(R.string.title_share_file)));
                     } else {
+                        Activity activity = getActivity();
+                        if (activity == null) {
+                            // it's gone, there's nothing we can do here
+                            return;
+                        }
                         // Save encrypted file
-                        result.createNotify(getActivity()).show();
+                        result.createNotify(activity).show();
                     }
                 }
 
             });
-            deleteFileDialog.show(getActivity().getSupportFragmentManager(), "deleteDialog");
+            deleteFileDialog.show(activity.getSupportFragmentManager(), "deleteDialog");
         } else {
 
             switch (mAfterEncryptAction) {
 
                 case SHARE:
                     // Share encrypted message/file
-                    startActivity(sendWithChooserExcludingEncrypt());
+                    startActivity(Intent.createChooser(createSendIntent(), getString(R.string.title_share_file)));
                     break;
 
                 case COPY:
-                    Activity activity = getActivity();
-                    if (activity == null) {
-                        // it's gone, there's nothing we can do here
-                        return;
-                    }
 
                     ClipboardManager clipMan = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (clipMan == null) {
+                        Notify.create(activity, R.string.error_clipboard_copy, Style.ERROR).show();
+                        break;
+                    }
                     ClipData clip = new ClipData(getString(R.string.label_clip_title),
                             // make available as application/pgp-encrypted
                             new String[] { "text/plain" },
                             new ClipData.Item(mOutputUris.get(0))
                     );
                     clipMan.setPrimaryClip(clip);
-                    result.createNotify(getActivity()).show();
+                    result.createNotify(activity).show();
                     break;
 
                 case SAVE:
                     // Encrypted file was saved already, just show notification
-                    result.createNotify(getActivity()).show();
+                    result.createNotify(activity).show();
                     break;
             }
         }
@@ -456,7 +544,7 @@ public class EncryptFilesFragment
                     String targetName = (mEncryptFilenames
                             ? String.valueOf(filenameCounter) : FileHelper.getFilename(getActivity(), model.inputUri))
                                     + (mUseArmor ? Constants.FILE_EXTENSION_ASC : Constants.FILE_EXTENSION_PGP_MAIN);
-                    mOutputUris.add(TemporaryStorageProvider.createFile(getActivity(), targetName));
+                    mOutputUris.add(TemporaryFileProvider.createFile(getActivity(), targetName));
                     filenameCounter++;
                 }
                 return false;
@@ -479,7 +567,7 @@ public class EncryptFilesFragment
                 String targetName = (mEncryptFilenames
                         ? String.valueOf(1) : FileHelper.getFilename(getActivity(),
                         mFilesAdapter.getModelItem(0).inputUri)) + Constants.FILE_EXTENSION_ASC;
-                mOutputUris.add(TemporaryStorageProvider.createFile(getActivity(), targetName, "text/plain"));
+                mOutputUris.add(TemporaryFileProvider.createFile(getActivity(), targetName, "text/plain"));
                 return false;
         }
 
@@ -537,14 +625,18 @@ public class EncryptFilesFragment
         data.addInputUris(mFilesAdapter.getAsArrayList());
 
         if (mUseCompression) {
-            data.setCompressionId(PgpConstants.sPreferredCompressionAlgorithms.get(0));
+            data.setCompressionAlgorithm(
+                    PgpSecurityConstants.OpenKeychainCompressionAlgorithmTags.USE_DEFAULT);
         } else {
-            data.setCompressionId(CompressionAlgorithmTags.UNCOMPRESSED);
+            data.setCompressionAlgorithm(
+                    PgpSecurityConstants.OpenKeychainCompressionAlgorithmTags.UNCOMPRESSED);
         }
         data.setHiddenRecipients(mHiddenRecipients);
         data.setEnableAsciiArmorOutput(mAfterEncryptAction == AfterEncryptAction.COPY || mUseArmor);
-        data.setSymmetricEncryptionAlgorithm(PgpConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_PREFERRED);
-        data.setSignatureHashAlgorithm(PgpConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_PREFERRED);
+        data.setSymmetricEncryptionAlgorithm(
+                PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_DEFAULT);
+        data.setSignatureHashAlgorithm(
+                PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_DEFAULT);
 
         EncryptActivity encryptActivity = (EncryptActivity) getActivity();
         EncryptModeFragment modeFragment = encryptActivity.getModeFragment();
@@ -584,22 +676,6 @@ public class EncryptFilesFragment
         return data;
     }
 
-    /**
-     * Create Intent Chooser but exclude OK's EncryptActivity.
-     */
-    private Intent sendWithChooserExcludingEncrypt() {
-        Intent prototype = createSendIntent();
-        String title = getString(R.string.title_share_file);
-
-        // we don't want to encrypt the encrypted, no inception ;)
-        String[] blacklist = new String[]{
-                Constants.PACKAGE_NAME + ".ui.EncryptFilesActivity",
-                "org.thialfihar.android.apg.ui.EncryptActivity"
-        };
-
-        return new ShareHelper(getActivity()).createChooserExcluding(prototype, title, blacklist);
-    }
-
     private Intent createSendIntent() {
         Intent sendIntent;
         // file
@@ -610,7 +686,7 @@ public class EncryptFilesFragment
             sendIntent = new Intent(Intent.ACTION_SEND_MULTIPLE);
             sendIntent.putExtra(Intent.EXTRA_STREAM, mOutputUris);
         }
-        sendIntent.setType(Constants.ENCRYPTED_FILES_MIME);
+        sendIntent.setType(Constants.MIME_TYPE_ENCRYPTED_ALTERNATE);
 
         EncryptActivity modeInterface = (EncryptActivity) getActivity();
         EncryptModeFragment modeFragment = modeInterface.getModeFragment();
@@ -641,7 +717,7 @@ public class EncryptFilesFragment
         switch (requestCode) {
             case REQUEST_CODE_INPUT: {
                 if (resultCode == Activity.RESULT_OK && data != null) {
-                    addFile(data);
+                    addInputUri(data);
                 }
                 return;
             }
@@ -652,7 +728,7 @@ public class EncryptFilesFragment
                     mOutputUris.add(data.getData());
                     // make sure this is correct at this point
                     mAfterEncryptAction = AfterEncryptAction.SAVE;
-                    cryptoOperation();
+                    cryptoOperation(new CryptoInputParcel(new Date()));
                 }
                 return;
             }

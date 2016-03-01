@@ -22,6 +22,7 @@ import android.content.res.ColorStateList;
 import android.database.Cursor;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
+import android.support.annotation.Nullable;
 import android.support.v4.widget.CursorAdapter;
 import android.text.Spannable;
 import android.text.SpannableString;
@@ -49,7 +50,7 @@ public class SubkeysAdapter extends CursorAdapter {
     private LayoutInflater mInflater;
     private SaveKeyringParcel mSaveKeyringParcel;
 
-    private boolean hasAnySecret;
+    private boolean mHasAnySecret;
     private ColorStateList mDefaultTextColor;
 
     public static final String[] SUBKEYS_PROJECTION = new String[]{
@@ -85,16 +86,10 @@ public class SubkeysAdapter extends CursorAdapter {
     private static final int INDEX_EXPIRY = 13;
     private static final int INDEX_FINGERPRINT = 14;
 
-    public SubkeysAdapter(Context context, Cursor c, int flags,
-                          SaveKeyringParcel saveKeyringParcel) {
+    public SubkeysAdapter(Context context, Cursor c, int flags) {
         super(context, c, flags);
 
         mInflater = LayoutInflater.from(context);
-        mSaveKeyringParcel = saveKeyringParcel;
-    }
-
-    public SubkeysAdapter(Context context, Cursor c, int flags) {
-        this(context, c, flags, null);
     }
 
     public long getKeyId(int position) {
@@ -133,12 +128,12 @@ public class SubkeysAdapter extends CursorAdapter {
 
     @Override
     public Cursor swapCursor(Cursor newCursor) {
-        hasAnySecret = false;
+        mHasAnySecret = false;
         if (newCursor != null && newCursor.moveToFirst()) {
             do {
                 SecretKeyType hasSecret = SecretKeyType.fromNum(newCursor.getInt(INDEX_HAS_SECRET));
                 if (hasSecret.isUsable()) {
-                    hasAnySecret = true;
+                    mHasAnySecret = true;
                     break;
                 }
             } while (newCursor.moveToNext());
@@ -179,7 +174,7 @@ public class SubkeysAdapter extends CursorAdapter {
                 ? mSaveKeyringParcel.getSubkeyChange(keyId)
                 : null;
 
-        if (change != null && (change.mDummyStrip || change.mMoveKeyToCard)) {
+        if (change != null && (change.mDummyStrip || change.mMoveKeyToSecurityToken)) {
             if (change.mDummyStrip) {
                 algorithmStr.append(", ");
                 final SpannableString boldStripped = new SpannableString(
@@ -188,7 +183,7 @@ public class SubkeysAdapter extends CursorAdapter {
                 boldStripped.setSpan(new StyleSpan(Typeface.BOLD), 0, boldStripped.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
                 algorithmStr.append(boldStripped);
             }
-            if (change.mMoveKeyToCard) {
+            if (change.mMoveKeyToSecurityToken) {
                 algorithmStr.append(", ");
                 final SpannableString boldDivert = new SpannableString(
                         context.getString(R.string.key_divert)
@@ -284,27 +279,27 @@ public class SubkeysAdapter extends CursorAdapter {
             vStatus.setVisibility(View.VISIBLE);
 
             vCertifyIcon.setColorFilter(
-                    mContext.getResources().getColor(R.color.bg_gray),
+                    mContext.getResources().getColor(R.color.key_flag_gray),
                     PorterDuff.Mode.SRC_IN);
             vSignIcon.setColorFilter(
-                    mContext.getResources().getColor(R.color.bg_gray),
+                    mContext.getResources().getColor(R.color.key_flag_gray),
                     PorterDuff.Mode.SRC_IN);
             vEncryptIcon.setColorFilter(
-                    mContext.getResources().getColor(R.color.bg_gray),
+                    mContext.getResources().getColor(R.color.key_flag_gray),
                     PorterDuff.Mode.SRC_IN);
             vAuthenticateIcon.setColorFilter(
-                    mContext.getResources().getColor(R.color.bg_gray),
+                    mContext.getResources().getColor(R.color.key_flag_gray),
                     PorterDuff.Mode.SRC_IN);
 
             if (isRevoked) {
                 vStatus.setImageResource(R.drawable.status_signature_revoked_cutout_24dp);
                 vStatus.setColorFilter(
-                        mContext.getResources().getColor(R.color.bg_gray),
+                        mContext.getResources().getColor(R.color.key_flag_gray),
                         PorterDuff.Mode.SRC_IN);
             } else if (isExpired) {
                 vStatus.setImageResource(R.drawable.status_signature_expired_cutout_24dp);
                 vStatus.setColorFilter(
-                        mContext.getResources().getColor(R.color.bg_gray),
+                        mContext.getResources().getColor(R.color.key_flag_gray),
                         PorterDuff.Mode.SRC_IN);
             }
         } else {
@@ -352,6 +347,20 @@ public class SubkeysAdapter extends CursorAdapter {
         } else {
             return super.isEnabled(position);
         }
+    }
+
+    /** Set this adapter into edit mode. This mode displays additional info for
+     * each item from a supplied SaveKeyringParcel reference.
+     *
+     * Note that it is up to the caller to reload the underlying cursor after
+     * updating the SaveKeyringParcel!
+     *
+     * @see SaveKeyringParcel
+     *
+     * @param saveKeyringParcel The parcel to get info from, or null to leave edit mode.
+     */
+    public void setEditMode(@Nullable SaveKeyringParcel saveKeyringParcel) {
+        mSaveKeyringParcel = saveKeyringParcel;
     }
 
 }

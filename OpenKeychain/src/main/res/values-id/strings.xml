@@ -1,0 +1,109 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!--GENERAL: Please put all strings inside quotes as described in example 1 on
+    http://developer.android.com/guide/topics/resources/string-resource.html (scroll down to "Escaping apostrophes and quotes").-->
+  <string name="app_name">OpenKeychain</string>
+  <!--title-->
+  <string name="title_encrypt_text">Enkripsi</string>
+  <string name="title_encrypt_files">Enkripsi</string>
+  <string name="title_decrypt">Dekripsi</string>
+  <string name="title_add_subkey">Tambah kunci tambahan</string>
+  <string name="title_edit_key">Edit kunci</string>
+  <string name="title_linked_create">Buat identitas yang tersambung</string>
+  <string name="title_preferences">Pengaturan</string>
+  <string name="title_api_registered_apps">Aplikasi</string>
+  <string name="title_key_server_preference">Server kunci OpenPGP</string>
+  <string name="title_change_passphrase">Ubah kata sandi</string>
+  <!--section-->
+  <string name="section_encrypt">Enkripsi</string>
+  <!--button-->
+  <!--Content Description-->
+  <!--menu-->
+  <string name="menu_preferences">Pengaturan</string>
+  <!--label-->
+  <string name="pref_keyserver">Server kunci OpenPGP</string>
+  <!--label shown in Android settings under the OpenKeychain account-->
+  <!--Proxy Preferences-->
+  <!--proxy type choices and values-->
+  <!--OrbotHelper strings-->
+  <!--InstallDialogFragment strings-->
+  <!--StartOrbotDialogFragment strings-->
+  <!--choice-->
+  <string name="choice_none">Tidak ada</string>
+  <!--key flags-->
+  <string name="flag_encrypt">Enkripsi</string>
+  <!--sentences-->
+  <!--errors
+         no punctuation, all lowercase,
+         they will be put after "error_message", e.g. "Error: file not found"-->
+  <!--errors without preceeding Error:-->
+  <!--results shown after decryption/verification-->
+  <!--Add keys-->
+  <!--progress dialogs, usually ending in '…'-->
+  <!--action strings-->
+  <!--key bit length selections-->
+  <!--elliptic curve names-->
+  <!--not in for now, see SaveKeyringParcel
+    <string name="key_curve_bp_p256">"Brainpool P-256"</string>
+    <string name="key_curve_bp_p384">"Brainpool P-384"</string>
+    <string name="key_curve_bp_p512">"Brainpool P-512"</string>-->
+  <!--compression-->
+  <!--Help-->
+  <!--Import-->
+  <!--Import from URL-->
+  <!--Generic result toast-->
+  <!--Import result toast-->
+  <!--Delete result toast-->
+  <!--Revoke result toast (snackbar)-->
+  <!--Certify result toast-->
+  <!--Intent labels-->
+  <!--Remote API-->
+  <string name="api_settings_no_key">Tidak ada kunci yang dipilih</string>
+  <string name="api_settings_settings">Pengaturan</string>
+  <!--Share-->
+  <!--retry upload dialog-->
+  <!--Delete or revoke private key dialog-->
+  <!--Delete Or Revoke Dialog spinner-->
+  <!--Key list-->
+  <!--Key view-->
+  <!--Key trust-->
+  <!--keybase proof stuff-->
+  <!--Edit key-->
+  <string name="edit_key_action_change_passphrase">Ubah kata sandi</string>
+  <!--Create key-->
+  <!--View key-->
+  <!--Add/Edit keyserver-->
+  <!--Navigation Drawer-->
+  <string name="nav_apps">Aplikasi</string>
+  <!--hints-->
+  <!--certs-->
+  <!--LogType log messages. Errors should have _ERROR_ in their name and end with a !-->
+  <!--Import Public log entries-->
+  <!--Import Secret log entries-->
+  <!--Keyring Canonicalization log entries-->
+  <!--Keyring merging log entries-->
+  <!--createSecretKeyRing-->
+  <!--modifySecretKeyRing-->
+  <!--Consolidate-->
+  <!--Edit Key (higher level than modify)-->
+  <!--Promote key-->
+  <!--Other messages used in OperationLogs-->
+  <!--Messages for DecryptVerify operation-->
+  <!--Messages for VerifySignedLiteralData operation-->
+  <!--Messages for SignEncrypt operation-->
+  <!--Messages for PgpSignEncrypt operation-->
+  <!--Linked Identity verification-->
+  <!--Messages for Keybase Verification operation-->
+  <!--Messages for Mime parsing operation-->
+  <!--PassphraseCache-->
+  <!--Keyserver sync-->
+  <!--First Time-->
+  <!--unsorted-->
+  <!--Android Account-->
+  <!--Passphrase wizard-->
+  <!--TODO: rename all the things!-->
+  <!--<string name="enter_passphrase_twice">Enter password twice</string>-->
+  <!--<string name="nfc_text">Please place a NFC tag near your device</string>-->
+  <string name="nfc_settings">Pengaturan</string>
+  <!--Other Linked Identity strings-->
+</resources>

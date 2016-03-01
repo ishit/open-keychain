@@ -20,7 +20,7 @@ package org.sufficientlysecure.keychain.support;
 
 import android.content.Context;
 
-import org.spongycastle.util.Arrays;
+import org.bouncycastle.util.Arrays;
 import org.sufficientlysecure.keychain.pgp.UncachedKeyRing;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.provider.ProviderHelper;
@@ -59,7 +59,7 @@ public class KeyringTestingHelper {
         // Should throw an exception; key is not yet saved
         retrieveKeyAndExpectNotFound(providerHelper, masterKeyId);
 
-        SaveKeyringResult saveKeyringResult = providerHelper.savePublicKeyRing(ring, new ProgressScaler());
+        SaveKeyringResult saveKeyringResult = providerHelper.savePublicKeyRing(ring, new ProgressScaler(), null);
 
         boolean saveSuccess = saveKeyringResult.success();
 

@@ -10,11 +10,6 @@
         app:showAsAction="collapseActionView|always" />
 
     <item
-        android:id="@+id/menu_key_list_export"
-        android:title="@string/menu_export_all_keys"
-        app:showAsAction="never" />
-
-    <item
         android:id="@+id/menu_key_list_create"
         android:title="@string/menu_manage_keys"
         app:showAsAction="never" />
@@ -27,6 +22,12 @@
     <item
         android:id="@+id/menu_key_list_debug_cons"
         android:title="Debug / Consolidate"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_key_list_debug_bench"
+        android:title="Debug / Benchmark"
         android:visible="false"
         app:showAsAction="never" />
 

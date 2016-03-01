@@ -1,7 +1,8 @@
+[![Stories in Ready](https://badge.waffle.io/open-keychain/open-keychain.png?label=ready&title=Ready)](https://waffle.io/open-keychain/open-keychain)
 # OpenKeychain (for Android)
 
 OpenKeychain is an OpenPGP implementation for Android.  
-For a more detailed description and installation instructions go to http://www.openkeychain.org .
+For a more detailed description and installation instructions go to https://www.openkeychain.org .
 
 ### Branches
 * The development of OpenKeychain happens in the "master" branch.
@@ -27,35 +28,35 @@ Translations are managed at Transifex, please contribute there at https://www.tr
 
 ### For bigger changes
 
-1. Join the development mailinglist at http://groups.google.com/d/forum/openpgp-keychain-dev
+1. Join the development mailinglist at https://lists.riseup.net/www/subscribe/openkeychain
 2. Propose bigger changes and discuss the consequences
 
 I am happy about every code contribution and appreciate your effort to help us developing OpenKeychain!
 
 ## Development
 
-Development mailinglist at http://groups.google.com/d/forum/openpgp-keychain-dev
+Development mailinglist at https://lists.riseup.net/www/subscribe/openkeychain
 
 ### Build with Gradle
 
 1. Clone the project from GitHub
 2. Get all external submodules with ``git submodule update --init --recursive``
 3. Have Android SDK "tools", "platform-tools", and "build-tools" directories in your PATH (http://developer.android.com/sdk/index.html)
-4. Open the Android SDK Manager (shell command: ``android``).  
-Expand the Tools directory and select "Android SDK Build-tools (Version 21.1.2)".  
-Expand the Extras directory and install "Android Support Repository"  
-Select everything for the newest SDK Platform, API 22, and also API 21
+4. Open the Android SDK Manager (shell command: ``android``).
+Expand the Tools directory and select "Android SDK Build-tools (Version 23.0.1)".
+Expand the Extras directory and install "Android Support Repository"
+Select SDK Platform for API levels 21, 22, and 23.
 5. Export ANDROID_HOME pointing to your Android SDK
-6. Execute ``./gradlew build``
-7. You can install the app with ``adb install -r OpenKeychain/build/outputs/apk/OpenKeychain-debug-unaligned.apk``
+6. Execute ``./gradlew assembleFdroidDebug``
+7. You can install the app with ``adb install -r OpenKeychain/build/outputs/apk/OpenKeychain-fdroid-debug.apk``
 
 ### Run Tests
 1. Use OpenJDK instead of Oracle JDK
-2. Execute ``./gradlew clean testDebug --continue``
+2. Execute ``./gradlew clean testFdroidDebug --continue``
 
 ### Run Jacoco Test Coverage
 1. Use OpenJDK instead of Oracle JDK
-2. Execute ``./gradlew clean testDebug jacocoTestReport``
+2. Execute ``./gradlew clean testFdroidDebug jacocoTestReport``
 3. Report is here: OpenKeychain/build/reports/jacoco/jacocoTestReport/html/index.html
 
 ### Development with Android Studio
@@ -70,13 +71,10 @@ We are using the newest [Android Studio](http://developer.android.com/sdk/instal
 
 ### Bouncy Castle
 
-#### Spongy Castle
-
-Spongy Castle is the stock Bouncy Castle libraries with a couple of small changes to make it work on Android. OpenKeychain uses a forked version with some small changes. These changes will been sent to Bouncy Castle, and Spongy Castle will be used again when they have filtered down.
+OpenKeychain uses a forked version with some small changes. These changes will been sent to Bouncy Castle.
 
 see
-* Fork: https://github.com/openpgp-keychain/spongycastle
-* Spongy Castle: http://rtyley.github.com/spongycastle/
+* Fork: https://github.com/openpgp-keychain/bouncycastle
 
 #### Bouncy Castle resources
 
@@ -114,6 +112,7 @@ ext {
 
 #### Add new library
 * You can add the library as a Maven dependency or as a git submodule (if patches are required) in the "extern" folder.
+* You can get all transitive dependencies with ``./gradlew -q dependencies OpenKeychain:dependencies``
 * If added as a Maven dependency, pin the library using [Gradle Witness](https://github.com/WhisperSystems/gradle-witness) (Do ``./gradlew -q calculateChecksums`` for Trust on First Use)
 * If added as a git submodule, change the ``compileSdkVersion`` and ``buildToolsVersion`` in build.gradle to use the variables from the root project:
 ```

@@ -7,7 +7,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="4dp"
-    custom:cardBackgroundColor="@android:color/white"
+    custom:cardBackgroundColor="?attr/colorCardViewBackground"
     custom:cardElevation="2dp"
     custom:cardUseCompatPadding="true"
     custom:cardCornerRadius="4dp"
@@ -24,9 +24,8 @@
         android:outAnimation="@anim/fade_out"
         android:id="@+id/view_animator"
         android:measureAllChildren="false"
-        custom:initialView="0"
+        custom:initialView="1"
         android:minHeight="?listPreferredItemHeightSmall"
-        android:animateLayoutChanges="true"
         >
 
         <LinearLayout
@@ -65,52 +64,65 @@
                 android:orientation="horizontal"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingRight="4dp"
-                android:paddingLeft="4dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="4dp"
+                android:gravity="center_vertical"
                 tools:ignore="UseCompoundDrawables">
 
                 <ImageView
                     android:id="@+id/result_encryption_icon"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:padding="4dp"
                     android:src="@drawable/status_lock_open_24dp"
-                    android:layout_gravity="center_vertical" />
+                    />
 
                 <TextView
                     android:id="@+id/result_encryption_text"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:textAppearance="?android:attr/textAppearanceMedium"
-                    android:layout_marginLeft="8dp"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
+                    android:layout_marginLeft="6dp"
                     android:text=""
                     tools:text="Encryption status text" />
+
+                <ImageView
+                    android:id="@+id/context_menu"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="4dp"
+                    android:scaleType="center"
+                    android:clickable="true"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_more_vert_black_24dp" />
+
             </LinearLayout>
 
             <LinearLayout
                 android:orientation="horizontal"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingRight="4dp"
-                android:paddingLeft="4dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="4dp"
+                android:gravity="center_vertical"
                 tools:ignore="UseCompoundDrawables">
 
                 <ImageView
                     android:id="@+id/result_signature_icon"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:padding="4dp"
                     android:src="@drawable/status_signature_unverified_cutout_24dp"
-                    android:layout_gravity="center_vertical" />
+                    />
 
                 <TextView
                     android:id="@+id/result_signature_text"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textAppearance="?android:attr/textAppearanceMedium"
-                    android:layout_marginLeft="8dp"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
+                    android:layout_marginLeft="6dp"
                     android:text=""
                     tools:text="Signature status text" />
             </LinearLayout>
@@ -119,9 +131,13 @@
                 android:id="@+id/result_signature_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="2dp"
                 android:clickable="true"
                 android:background="?android:selectableItemBackground"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:minHeight="40dp"
+                >
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -129,7 +145,7 @@
                     android:layout_weight="1"
                     android:paddingRight="4dp"
                     android:paddingLeft="4dp"
-                    android:gravity="center_vertical"
+                    android:layout_gravity="center_vertical"
                     android:orientation="vertical">
 
                     <TextView
@@ -147,6 +163,8 @@
                         android:layout_height="wrap_content"
                         android:gravity="center_vertical"
                         android:text=""
+                        android:singleLine="true"
+                        android:ellipsize="end"
                         tools:text="alice@example.com" />
 
                 </LinearLayout>
@@ -159,19 +177,45 @@
                     android:layout_marginTop="8dp"
                     android:background="?android:attr/listDivider" />
 
-                <TextView
-                    android:id="@+id/result_signature_action"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:textAppearance="?android:attr/textAppearanceMedium"
+                <org.sufficientlysecure.keychain.ui.widget.ToolableViewAnimator
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
-                    android:drawableRight="@drawable/ic_vpn_key_grey_24dp"
-                    android:drawablePadding="8dp"
-                    android:gravity="center_vertical"
-                    android:text=""
-                    tools:text="Show"
-                    />
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:id="@+id/result_signature_action"
+                    android:measureAllChildren="true"
+                    android:inAnimation="@anim/fade_in"
+                    android:outAnimation="@anim/fade_out"
+                    custom:initialView="0"
+                    >
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:textAppearance="?android:attr/textAppearanceMedium"
+                        android:drawableRight="@drawable/ic_vpn_key_grey_24dp"
+                        android:drawablePadding="8dp"
+                        android:text="@string/decrypt_result_action_show"
+                        />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:textAppearance="?android:attr/textAppearanceMedium"
+                        android:drawableRight="@drawable/ic_file_download_grey_24dp"
+                        android:drawablePadding="8dp"
+                        android:text="@string/decrypt_result_action_Lookup"
+                        />
+
+                    <ProgressBar
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:padding="4dp"
+                        android:layout_gravity="center" />
+
+                </org.sufficientlysecure.keychain.ui.widget.ToolableViewAnimator>
 
             </LinearLayout>
 
@@ -184,62 +228,10 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:id="@+id/file"
-                android:clickable="true"
-                android:background="?android:selectableItemBackground"
-                >
+                android:id="@+id/file_list"
+                android:orientation="vertical">
 
-                <ImageView
-                    android:id="@+id/thumbnail"
-                    android:layout_gravity="center_vertical"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:scaleType="center"
-                    android:padding="6dp"
-                    android:src="@drawable/ic_doc_generic_am" />
-
-                <LinearLayout
-                    android:orientation="vertical"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp"
-                    android:layout_weight="1">
-
-                    <TextView
-                        android:id="@+id/filename"
-                        android:maxLines="1"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="?android:attr/textColorSecondary"
-                        android:textAppearance="?android:attr/textAppearanceMedium"
-                        android:ellipsize="end"
-                        android:text=""
-                        tools:text="filename.jpg" />
-
-                    <TextView
-                        android:id="@+id/filesize"
-                        android:maxLines="1"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="?android:attr/textColorTertiary"
-                        android:textAppearance="?android:attr/textAppearanceSmall"
-                        android:textSize="12sp"
-                        android:ellipsize="end"
-                        android:text=""
-                        tools:text="14kb" />
-
-                </LinearLayout>
-
-                <ImageView
-                    android:id="@+id/context_menu"
-                    android:scaleType="center"
-                    android:layout_width="36dip"
-                    android:layout_height="48dip"
-                    android:clickable="true"
-                    android:background="?android:selectableItemBackground"
-                    android:src="@drawable/ic_menu_moreoverflow_normal_holo_light" />
+                <include layout="@layout/decrypt_list_file_item" />
 
             </LinearLayout>
 
@@ -282,6 +274,38 @@
                 android:padding="6dp"
                 android:background="?android:selectableItemBackground"
                 android:src="@drawable/ic_view_list_grey_24dp"
+                android:layout_gravity="center_vertical" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginLeft="8dp"
+                android:layout_marginStart="8dp"
+                android:layout_gravity="center_vertical"
+                android:drawablePadding="12dp"
+                android:text="@string/msg_cancelled"
+                android:drawableLeft="@drawable/status_signature_invalid_cutout_24dp"
+                android:textAppearance="?android:attr/textAppearanceMedium"
+                />
+
+            <ImageView
+                android:id="@+id/cancel_retry"
+                android:scaleType="center"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:clickable="true"
+                android:padding="6dp"
+                android:background="?android:selectableItemBackground"
+                android:src="@drawable/ic_repeat_grey_24dp"
                 android:layout_gravity="center_vertical" />
 
         </LinearLayout>

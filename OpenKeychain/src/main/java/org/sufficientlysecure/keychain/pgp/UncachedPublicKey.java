@@ -18,13 +18,13 @@
 
 package org.sufficientlysecure.keychain.pgp;
 
-import org.spongycastle.bcpg.ECPublicBCPGKey;
-import org.spongycastle.bcpg.SignatureSubpacketTags;
-import org.spongycastle.openpgp.PGPPublicKey;
-import org.spongycastle.openpgp.PGPSignature;
-import org.spongycastle.openpgp.PGPSignatureSubpacketVector;
-import org.spongycastle.openpgp.PGPUserAttributeSubpacketVector;
-import org.spongycastle.openpgp.operator.jcajce.JcaPGPContentVerifierBuilderProvider;
+import org.bouncycastle.bcpg.ECPublicBCPGKey;
+import org.bouncycastle.bcpg.SignatureSubpacketTags;
+import org.bouncycastle.openpgp.PGPPublicKey;
+import org.bouncycastle.openpgp.PGPSignature;
+import org.bouncycastle.openpgp.PGPSignatureSubpacketVector;
+import org.bouncycastle.openpgp.PGPUserAttributeSubpacketVector;
+import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentVerifierBuilderProvider;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.util.IterableIterator;
 import org.sufficientlysecure.keychain.util.Log;
@@ -211,12 +211,19 @@ public class UncachedPublicKey {
         return getAlgorithm() == PGPPublicKey.ELGAMAL_ENCRYPT;
     }
 
+    public boolean isRSA() {
+        return getAlgorithm() == PGPPublicKey.RSA_GENERAL
+                || getAlgorithm() == PGPPublicKey.RSA_ENCRYPT
+                || getAlgorithm() == PGPPublicKey.RSA_SIGN;
+    }
+
     public boolean isDSA() {
         return getAlgorithm() == PGPPublicKey.DSA;
     }
 
     public boolean isEC() {
-        return getAlgorithm() == PGPPublicKey.ECDH || getAlgorithm() == PGPPublicKey.ECDSA;
+        return getAlgorithm() == PGPPublicKey.ECDH
+                || getAlgorithm() == PGPPublicKey.ECDSA;
     }
 
     public byte[] getFingerprint() {
@@ -361,4 +368,5 @@ public class UncachedPublicKey {
 
         return calendar.getTime();
     }
+
 }

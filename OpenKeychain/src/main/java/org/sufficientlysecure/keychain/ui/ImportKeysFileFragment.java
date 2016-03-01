@@ -29,6 +29,9 @@ import android.view.ViewGroup;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.compatibility.ClipboardReflection;
+import org.sufficientlysecure.keychain.pgp.PgpHelper;
+import org.sufficientlysecure.keychain.ui.util.Notify;
+import org.sufficientlysecure.keychain.ui.util.Notify.Style;
 import org.sufficientlysecure.keychain.util.FileHelper;
 
 public class ImportKeysFileFragment extends Fragment {
@@ -64,8 +67,8 @@ public class ImportKeysFileFragment extends Fragment {
                 // open .asc or .gpg files
                 // setting it to text/plain prevents Cyanogenmod's file manager from selecting asc
                 // or gpg types!
-                FileHelper.openFile(ImportKeysFileFragment.this, Uri.fromFile(Constants.Path.APP_DIR),
-                        "*/*", REQUEST_CODE_FILE);
+                FileHelper.openDocument(ImportKeysFileFragment.this,
+                        Uri.fromFile(Constants.Path.APP_DIR), "*/*", false, REQUEST_CODE_FILE);
             }
         });
 
@@ -78,11 +81,15 @@ public class ImportKeysFileFragment extends Fragment {
                 String sendText = "";
                 if (clipboardText != null) {
                     sendText = clipboardText.toString();
+                    sendText = PgpHelper.getPgpKeyContent(sendText);
+                    if (sendText == null) {
+                        Notify.create(mImportActivity, "Bad data!", Style.ERROR).show();
+                        return;
+                    }
                     mImportActivity.loadCallback(new ImportKeysListFragment.BytesLoaderState(sendText.getBytes(), null));
                 }
             }
         });
-
 
         return view;
     }

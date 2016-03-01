@@ -18,15 +18,20 @@
 
 package org.sufficientlysecure.keychain.pgp;
 
-import org.spongycastle.openpgp.PGPKeyRing;
-import org.spongycastle.openpgp.PGPPublicKey;
+import org.bouncycastle.openpgp.PGPKeyRing;
+import org.bouncycastle.openpgp.PGPPublicKey;
 import org.sufficientlysecure.keychain.pgp.exception.PgpKeyNotFoundException;
+import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.util.IterableIterator;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Set;
+
 
 /** A generic wrapped PGPKeyRing object.
  *
@@ -91,6 +96,16 @@ public abstract class CanonicalizedKeyRing extends KeyRing {
         return getRing().getPublicKey().isEncryptionKey();
     }
 
+    public Set<Long> getEncryptIds() {
+        HashSet<Long> result = new HashSet<>();
+        for(CanonicalizedPublicKey key : publicKeyIterator()) {
+            if (key.canEncrypt() && key.isValid()) {
+                result.add(key.getKeyId());
+            }
+        }
+        return result;
+    }
+
     public long getEncryptId() throws PgpKeyNotFoundException {
         for(CanonicalizedPublicKey key : publicKeyIterator()) {
             if (key.canEncrypt() && key.isValid()) {
@@ -137,6 +152,21 @@ public abstract class CanonicalizedKeyRing extends KeyRing {
 
     public byte[] getEncoded() throws IOException {
         return getRing().getEncoded();
+    }
+
+    /// Returns true iff the keyring contains a primary key or mutually bound subkey with the expected fingerprint
+    public boolean containsBoundSubkey(String expectedFingerprint) {
+        for (CanonicalizedPublicKey key : publicKeyIterator()) {
+            boolean isMasterOrMutuallyBound = key.isMasterKey() || key.canSign();
+            if (!isMasterOrMutuallyBound) {
+                continue;
+            }
+            if (KeyFormattingUtils.convertFingerprintToHex(
+                    key.getFingerprint()).equalsIgnoreCase(expectedFingerprint)) {
+                return true;
+            }
+        }
+        return false;
     }
 
 }

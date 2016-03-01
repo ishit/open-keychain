@@ -18,11 +18,12 @@
 
 package org.sufficientlysecure.keychain.pgp;
 
-import org.spongycastle.openpgp.PGPObjectFactory;
-import org.spongycastle.openpgp.PGPPublicKey;
-import org.spongycastle.openpgp.PGPPublicKeyRing;
-import org.spongycastle.openpgp.PGPSecretKey;
-import org.spongycastle.openpgp.PGPSecretKeyRing;
+import org.bouncycastle.openpgp.PGPObjectFactory;
+import org.bouncycastle.openpgp.PGPPublicKey;
+import org.bouncycastle.openpgp.PGPPublicKeyRing;
+import org.bouncycastle.openpgp.PGPSecretKey;
+import org.bouncycastle.openpgp.PGPSecretKeyRing;
+import org.bouncycastle.openpgp.operator.jcajce.JcaKeyFingerprintCalculator;
 import org.sufficientlysecure.keychain.pgp.exception.PgpKeyNotFoundException;
 import org.sufficientlysecure.keychain.util.IterableIterator;
 
@@ -42,7 +43,7 @@ public class CanonicalizedPublicKeyRing extends CanonicalizedKeyRing {
         super(verified);
         if(mRing == null) {
             // get first object in block
-            PGPObjectFactory factory = new PGPObjectFactory(blob);
+            PGPObjectFactory factory = new PGPObjectFactory(blob, new JcaKeyFingerprintCalculator());
             try {
                 Object obj = factory.nextObject();
                 if (! (obj instanceof PGPPublicKeyRing)) {
@@ -60,19 +61,6 @@ public class CanonicalizedPublicKeyRing extends CanonicalizedKeyRing {
 
     PGPPublicKeyRing getRing() {
         return mRing;
-    }
-
-    /** Getter that returns the subkey that should be used for signing. */
-    CanonicalizedPublicKey getEncryptionSubKey() throws PgpKeyNotFoundException {
-        PGPPublicKey key = getRing().getPublicKey(getEncryptId());
-        if(key != null) {
-            CanonicalizedPublicKey cKey = new CanonicalizedPublicKey(this, key);
-            if(!cKey.canEncrypt()) {
-                throw new PgpKeyNotFoundException("key error");
-            }
-            return cKey;
-        }
-        throw new PgpKeyNotFoundException("no encryption key available");
     }
 
     public IterableIterator<CanonicalizedPublicKey> publicKeyIterator() {

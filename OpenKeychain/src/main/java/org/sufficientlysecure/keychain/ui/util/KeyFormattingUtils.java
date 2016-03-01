@@ -19,6 +19,7 @@
 package org.sufficientlysecure.keychain.ui.util;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.text.Spannable;
@@ -27,13 +28,15 @@ import android.text.style.ForegroundColorSpan;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.ViewAnimator;
 
+import org.openintents.openpgp.OpenPgpDecryptionResult;
 import org.openintents.openpgp.OpenPgpSignatureResult;
-import org.spongycastle.asn1.ASN1ObjectIdentifier;
-import org.spongycastle.asn1.nist.NISTNamedCurves;
-import org.spongycastle.asn1.teletrust.TeleTrusTNamedCurves;
-import org.spongycastle.bcpg.PublicKeyAlgorithmTags;
-import org.spongycastle.util.encoders.Hex;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.nist.NISTNamedCurves;
+import org.bouncycastle.asn1.teletrust.TeleTrusTNamedCurves;
+import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
+import org.bouncycastle.util.encoders.Hex;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.operations.results.DecryptVerifyResult;
@@ -268,6 +271,10 @@ public class KeyFormattingUtils {
         return hexString;
     }
 
+    public static long convertFingerprintToKeyId(byte[] fingerprint) {
+        return ByteBuffer.wrap(fingerprint, 12, 8).getLong();
+    }
+
     /**
      * Makes a human-readable version of a key ID, which is usually 64 bits: lower-case, no
      * leading 0x, space-separated quartets (for keys whose length in hex is divisible by 4)
@@ -407,7 +414,8 @@ public class KeyFormattingUtils {
         UNVERIFIED,
         UNKNOWN_KEY,
         INVALID,
-        NOT_SIGNED
+        NOT_SIGNED,
+        INSECURE
     }
 
     public static void setStatusImage(Context context, ImageView statusIcon, State state) {
@@ -433,129 +441,158 @@ public class KeyFormattingUtils {
         View getSignatureLayout();
         TextView getSignatureUserName();
         TextView getSignatureUserEmail();
-        TextView getSignatureAction();
+        ViewAnimator getSignatureAction();
 
         boolean hasEncrypt();
 
     }
 
     @SuppressWarnings("deprecation") // context.getDrawable is api lvl 21, need to use deprecated
-    public static void setStatus(Context context, StatusHolder holder, DecryptVerifyResult result) {
-
-        OpenPgpSignatureResult signatureResult = result.getSignatureResult();
+    public static void setStatus(Resources resources, StatusHolder holder, DecryptVerifyResult result,
+            boolean processingkeyLookup) {
 
         if (holder.hasEncrypt()) {
+            OpenPgpDecryptionResult decryptionResult = result.getDecryptionResult();
+
             int encText, encIcon, encColor;
-            if (signatureResult != null && signatureResult.isSignatureOnly()) {
-                encIcon = R.drawable.status_lock_open_24dp;
-                encText = R.string.decrypt_result_not_encrypted;
-                encColor = R.color.android_red_light;
-            } else {
-                encIcon = R.drawable.status_lock_closed_24dp;
-                encText = R.string.decrypt_result_encrypted;
-                encColor = R.color.android_green_light;
+
+            switch (decryptionResult.getResult()) {
+                case OpenPgpDecryptionResult.RESULT_ENCRYPTED: {
+                    encText = R.string.decrypt_result_encrypted;
+                    encIcon = R.drawable.status_lock_closed_24dp;
+                    encColor = R.color.key_flag_green;
+                    break;
+                }
+
+                case OpenPgpDecryptionResult.RESULT_INSECURE: {
+                    encText = R.string.decrypt_result_insecure;
+                    encIcon = R.drawable.status_signature_invalid_cutout_24dp;
+                    encColor = R.color.key_flag_red;
+                    break;
+                }
+
+                default:
+                case OpenPgpDecryptionResult.RESULT_NOT_ENCRYPTED: {
+                    encText = R.string.decrypt_result_not_encrypted;
+                    encIcon = R.drawable.status_lock_open_24dp;
+                    encColor = R.color.key_flag_red;
+                    break;
+                }
             }
 
-            int encColorRes = context.getResources().getColor(encColor);
+            int encColorRes = resources.getColor(encColor);
             holder.getEncryptionStatusIcon().setColorFilter(encColorRes, PorterDuff.Mode.SRC_IN);
-            holder.getEncryptionStatusIcon().setImageDrawable(context.getResources().getDrawable(encIcon));
+            holder.getEncryptionStatusIcon().setImageDrawable(resources.getDrawable(encIcon));
             holder.getEncryptionStatusText().setText(encText);
             holder.getEncryptionStatusText().setTextColor(encColorRes);
         }
 
+        OpenPgpSignatureResult signatureResult = result.getSignatureResult();
+
         int sigText, sigIcon, sigColor;
-        int sigActionText, sigActionIcon;
+        int sigActionDisplayedChild;
 
-        if (signatureResult == null) {
+        switch (signatureResult.getResult()) {
 
-            sigText = R.string.decrypt_result_no_signature;
-            sigIcon = R.drawable.status_signature_invalid_cutout_24dp;
-            sigColor = R.color.bg_gray;
+            case OpenPgpSignatureResult.RESULT_NO_SIGNATURE: {
+                // no signature
 
-            // won't be used, but makes compiler happy
-            sigActionText = 0;
-            sigActionIcon = 0;
+                sigText = R.string.decrypt_result_no_signature;
+                sigIcon = R.drawable.status_signature_invalid_cutout_24dp;
+                sigColor = R.color.key_flag_gray;
 
-        } else switch (signatureResult.getStatus()) {
+                // won't be used, but makes compiler happy
+                sigActionDisplayedChild = -1;
+                break;
+            }
 
-            case OpenPgpSignatureResult.SIGNATURE_SUCCESS_CERTIFIED: {
+            case OpenPgpSignatureResult.RESULT_VALID_CONFIRMED: {
                 sigText = R.string.decrypt_result_signature_certified;
                 sigIcon = R.drawable.status_signature_verified_cutout_24dp;
-                sigColor = R.color.android_green_light;
+                sigColor = R.color.key_flag_green;
 
-                sigActionText = R.string.decrypt_result_action_show;
-                sigActionIcon = R.drawable.ic_vpn_key_grey_24dp;
+                sigActionDisplayedChild = 0;
                 break;
             }
 
-            case OpenPgpSignatureResult.SIGNATURE_SUCCESS_UNCERTIFIED: {
+            case OpenPgpSignatureResult.RESULT_VALID_UNCONFIRMED: {
                 sigText = R.string.decrypt_result_signature_uncertified;
                 sigIcon = R.drawable.status_signature_unverified_cutout_24dp;
-                sigColor = R.color.android_orange_light;
+                sigColor = R.color.key_flag_orange;
 
-                sigActionText = R.string.decrypt_result_action_show;
-                sigActionIcon = R.drawable.ic_vpn_key_grey_24dp;
+                sigActionDisplayedChild = 0;
                 break;
             }
 
-            case OpenPgpSignatureResult.SIGNATURE_KEY_REVOKED: {
+            case OpenPgpSignatureResult.RESULT_INVALID_KEY_REVOKED: {
                 sigText = R.string.decrypt_result_signature_revoked_key;
                 sigIcon = R.drawable.status_signature_revoked_cutout_24dp;
-                sigColor = R.color.android_red_light;
+                sigColor = R.color.key_flag_red;
 
-                sigActionText = R.string.decrypt_result_action_show;
-                sigActionIcon = R.drawable.ic_vpn_key_grey_24dp;
+                sigActionDisplayedChild = 0;
                 break;
             }
 
-            case OpenPgpSignatureResult.SIGNATURE_KEY_EXPIRED: {
+            case OpenPgpSignatureResult.RESULT_INVALID_KEY_EXPIRED: {
                 sigText = R.string.decrypt_result_signature_expired_key;
                 sigIcon = R.drawable.status_signature_expired_cutout_24dp;
-                sigColor = R.color.android_red_light;
+                sigColor = R.color.key_flag_red;
 
-                sigActionText = R.string.decrypt_result_action_show;
-                sigActionIcon = R.drawable.ic_vpn_key_grey_24dp;
+                sigActionDisplayedChild = 0;
                 break;
             }
 
-            case OpenPgpSignatureResult.SIGNATURE_KEY_MISSING: {
+            case OpenPgpSignatureResult.RESULT_KEY_MISSING: {
                 sigText = R.string.decrypt_result_signature_missing_key;
                 sigIcon = R.drawable.status_signature_unknown_cutout_24dp;
-                sigColor = R.color.android_red_light;
+                sigColor = R.color.key_flag_red;
 
-                sigActionText = R.string.decrypt_result_action_Lookup;
-                sigActionIcon = R.drawable.ic_file_download_grey_24dp;
+                sigActionDisplayedChild = 1;
+                break;
+            }
+
+            case OpenPgpSignatureResult.RESULT_INVALID_INSECURE: {
+                sigText = R.string.decrypt_result_insecure_cryptography;
+                sigIcon = R.drawable.status_signature_invalid_cutout_24dp;
+                sigColor = R.color.key_flag_red;
+
+                sigActionDisplayedChild = 0;
                 break;
             }
 
             default:
-            case OpenPgpSignatureResult.SIGNATURE_ERROR: {
+            case OpenPgpSignatureResult.RESULT_INVALID_SIGNATURE: {
                 sigText = R.string.decrypt_result_invalid_signature;
                 sigIcon = R.drawable.status_signature_invalid_cutout_24dp;
-                sigColor = R.color.android_red_light;
+                sigColor = R.color.key_flag_red;
 
-                sigActionText = R.string.decrypt_result_action_show;
-                sigActionIcon = R.drawable.ic_vpn_key_grey_24dp;
+                // won't be used, but makes compiler happy
+                sigActionDisplayedChild = -1;
                 break;
             }
 
         }
 
-        int sigColorRes = context.getResources().getColor(sigColor);
+        // possibly switch out "Lookup" button for progress bar
+        if (sigActionDisplayedChild == 1 && processingkeyLookup) {
+            sigActionDisplayedChild = 2;
+        }
+
+        int sigColorRes = resources.getColor(sigColor);
         holder.getSignatureStatusIcon().setColorFilter(sigColorRes, PorterDuff.Mode.SRC_IN);
-        holder.getSignatureStatusIcon().setImageDrawable(context.getResources().getDrawable(sigIcon));
+        holder.getSignatureStatusIcon().setImageDrawable(resources.getDrawable(sigIcon));
         holder.getSignatureStatusText().setText(sigText);
         holder.getSignatureStatusText().setTextColor(sigColorRes);
 
-        if (signatureResult != null) {
+        if (signatureResult.getResult() != OpenPgpSignatureResult.RESULT_NO_SIGNATURE
+                && signatureResult.getResult() != OpenPgpSignatureResult.RESULT_INVALID_SIGNATURE) {
+            // has a signature, thus display layouts
 
             holder.getSignatureLayout().setVisibility(View.VISIBLE);
 
-            holder.getSignatureAction().setText(sigActionText);
-            holder.getSignatureAction().setCompoundDrawablesWithIntrinsicBounds(
-                    0, 0, sigActionIcon, 0);
+            holder.getSignatureAction().setDisplayedChild(sigActionDisplayedChild);
 
-            String userId = signatureResult.getPrimaryUserId();
+            String userId = result.getSignatureResult().getPrimaryUserId();
             KeyRing.UserId userIdSplit = KeyRing.splitUserId(userId);
             if (userIdSplit.name != null) {
                 holder.getSignatureUserName().setText(userIdSplit.name);
@@ -595,7 +632,7 @@ public class KeyFormattingUtils {
                             context.getResources().getDrawable(R.drawable.status_signature_verified_cutout_24dp));
                 }
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.android_green_light;
+                    color = R.color.key_flag_green;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);
@@ -608,7 +645,7 @@ public class KeyFormattingUtils {
                 statusIcon.setImageDrawable(
                         context.getResources().getDrawable(R.drawable.status_lock_closed_24dp));
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.android_green_light;
+                    color = R.color.key_flag_green;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);
@@ -627,7 +664,7 @@ public class KeyFormattingUtils {
                             context.getResources().getDrawable(R.drawable.status_signature_unverified_cutout_24dp));
                 }
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.android_orange_light;
+                    color = R.color.key_flag_orange;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);
@@ -640,7 +677,7 @@ public class KeyFormattingUtils {
                 statusIcon.setImageDrawable(
                         context.getResources().getDrawable(R.drawable.status_signature_unknown_cutout_24dp));
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.android_red_light;
+                    color = R.color.key_flag_red;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);
@@ -659,7 +696,7 @@ public class KeyFormattingUtils {
                             context.getResources().getDrawable(R.drawable.status_signature_revoked_cutout_24dp));
                 }
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.android_red_light;
+                    color = R.color.key_flag_red;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);
@@ -677,7 +714,25 @@ public class KeyFormattingUtils {
                             context.getResources().getDrawable(R.drawable.status_signature_expired_cutout_24dp));
                 }
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.android_red_light;
+                    color = R.color.key_flag_red;
+                }
+                statusIcon.setColorFilter(context.getResources().getColor(color),
+                        PorterDuff.Mode.SRC_IN);
+                if (statusText != null) {
+                    statusText.setTextColor(context.getResources().getColor(color));
+                }
+                break;
+            }
+            case INSECURE: {
+                if (big) {
+                    statusIcon.setImageDrawable(
+                            context.getResources().getDrawable(R.drawable.status_signature_invalid_cutout_96dp));
+                } else {
+                    statusIcon.setImageDrawable(
+                            context.getResources().getDrawable(R.drawable.status_signature_invalid_cutout_24dp));
+                }
+                if (color == KeyFormattingUtils.DEFAULT_COLOR) {
+                    color = R.color.key_flag_red;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);
@@ -690,7 +745,7 @@ public class KeyFormattingUtils {
                 statusIcon.setImageDrawable(
                         context.getResources().getDrawable(R.drawable.status_lock_open_24dp));
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.android_red_light;
+                    color = R.color.key_flag_red;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);
@@ -703,7 +758,7 @@ public class KeyFormattingUtils {
                 statusIcon.setImageDrawable(
                         context.getResources().getDrawable(R.drawable.status_signature_unknown_cutout_24dp));
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.android_red_light;
+                    color = R.color.key_flag_red;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);
@@ -716,7 +771,7 @@ public class KeyFormattingUtils {
                 statusIcon.setImageDrawable(
                         context.getResources().getDrawable(R.drawable.status_signature_invalid_cutout_24dp));
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.android_red_light;
+                    color = R.color.key_flag_red;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);
@@ -730,7 +785,7 @@ public class KeyFormattingUtils {
                 statusIcon.setImageDrawable(
                         context.getResources().getDrawable(R.drawable.status_signature_invalid_cutout_24dp));
                 if (color == KeyFormattingUtils.DEFAULT_COLOR) {
-                    color = R.color.bg_gray;
+                    color = R.color.key_flag_gray;
                 }
                 statusIcon.setColorFilter(context.getResources().getColor(color),
                         PorterDuff.Mode.SRC_IN);

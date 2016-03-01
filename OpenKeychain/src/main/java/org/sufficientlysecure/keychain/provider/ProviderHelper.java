@@ -26,15 +26,22 @@ import android.content.OperationApplicationException;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.RemoteException;
+import android.support.annotation.NonNull;
 import android.support.v4.util.LongSparseArray;
 
-import org.spongycastle.bcpg.CompressionAlgorithmTags;
+import org.bouncycastle.bcpg.CompressionAlgorithmTags;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
+import org.sufficientlysecure.keychain.operations.results.ImportKeyResult;
+import org.sufficientlysecure.keychain.pgp.WrappedUserAttribute;
+import org.sufficientlysecure.keychain.pgp.exception.PgpKeyNotFoundException;
+import org.sufficientlysecure.keychain.provider.KeychainContract.UserPackets;
+import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
+import org.sufficientlysecure.keychain.util.ParcelableFileCache.IteratorWithSize;
+import org.sufficientlysecure.keychain.util.Preferences;
 import org.sufficientlysecure.keychain.keyimport.ParcelableKeyRing;
 import org.sufficientlysecure.keychain.operations.ImportOperation;
 import org.sufficientlysecure.keychain.operations.results.ConsolidateResult;
-import org.sufficientlysecure.keychain.operations.results.ImportKeyResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.LogType;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.OperationLog;
 import org.sufficientlysecure.keychain.operations.results.SaveKeyringResult;
@@ -44,12 +51,11 @@ import org.sufficientlysecure.keychain.pgp.CanonicalizedSecretKey;
 import org.sufficientlysecure.keychain.pgp.CanonicalizedSecretKey.SecretKeyType;
 import org.sufficientlysecure.keychain.pgp.CanonicalizedSecretKeyRing;
 import org.sufficientlysecure.keychain.pgp.KeyRing;
-import org.sufficientlysecure.keychain.pgp.PgpConstants;
+import org.sufficientlysecure.keychain.pgp.PgpSecurityConstants;
 import org.sufficientlysecure.keychain.pgp.Progressable;
 import org.sufficientlysecure.keychain.pgp.UncachedKeyRing;
 import org.sufficientlysecure.keychain.pgp.UncachedPublicKey;
 import org.sufficientlysecure.keychain.pgp.WrappedSignature;
-import org.sufficientlysecure.keychain.pgp.WrappedUserAttribute;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.provider.KeychainContract.ApiAllowedKeys;
 import org.sufficientlysecure.keychain.provider.KeychainContract.ApiApps;
@@ -57,15 +63,12 @@ import org.sufficientlysecure.keychain.provider.KeychainContract.Certs;
 import org.sufficientlysecure.keychain.provider.KeychainContract.KeyRingData;
 import org.sufficientlysecure.keychain.provider.KeychainContract.KeyRings;
 import org.sufficientlysecure.keychain.provider.KeychainContract.Keys;
-import org.sufficientlysecure.keychain.provider.KeychainContract.UserPackets;
+import org.sufficientlysecure.keychain.provider.KeychainContract.UpdatedKeys;
 import org.sufficientlysecure.keychain.remote.AccountSettings;
 import org.sufficientlysecure.keychain.remote.AppSettings;
-import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.util.IterableIterator;
 import org.sufficientlysecure.keychain.util.Log;
 import org.sufficientlysecure.keychain.util.ParcelableFileCache;
-import org.sufficientlysecure.keychain.util.ParcelableFileCache.IteratorWithSize;
-import org.sufficientlysecure.keychain.util.Preferences;
 import org.sufficientlysecure.keychain.util.ProgressFixedScaler;
 import org.sufficientlysecure.keychain.util.ProgressScaler;
 import org.sufficientlysecure.keychain.util.Utf8Util;
@@ -81,6 +84,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * This class contains high level methods for database access. Despite its
@@ -251,8 +255,9 @@ public class ProviderHelper {
                 KeyRings.MASTER_KEY_ID, FIELD_TYPE_INTEGER);
     }
 
-    public CachedPublicKeyRing getCachedPublicKeyRing(Uri queryUri) {
-        return new CachedPublicKeyRing(this, queryUri);
+    public CachedPublicKeyRing getCachedPublicKeyRing(Uri queryUri) throws PgpKeyNotFoundException {
+        long masterKeyId = new CachedPublicKeyRing(this, queryUri).extractOrGetMasterKeyId();
+        return getCachedPublicKeyRing(masterKeyId);
     }
 
     public CachedPublicKeyRing getCachedPublicKeyRing(long id) {
@@ -684,6 +689,36 @@ public class ProviderHelper {
             mIndent -= 1;
         }
 
+        // before deleting key, retrieve it's last updated time
+        final int INDEX_MASTER_KEY_ID = 0;
+        final int INDEX_LAST_UPDATED = 1;
+        Cursor lastUpdatedCursor = mContentResolver.query(
+                UpdatedKeys.CONTENT_URI,
+                new String[]{
+                        UpdatedKeys.MASTER_KEY_ID,
+                        UpdatedKeys.LAST_UPDATED
+                },
+                UpdatedKeys.MASTER_KEY_ID + " = ?",
+                new String[]{"" + masterKeyId},
+                null
+        );
+        if (lastUpdatedCursor.moveToNext()) {
+            // there was an entry to re-insert
+            // this operation must happen after the new key is inserted
+            ContentValues lastUpdatedEntry = new ContentValues(2);
+            lastUpdatedEntry.put(UpdatedKeys.MASTER_KEY_ID,
+                    lastUpdatedCursor.getLong(INDEX_MASTER_KEY_ID));
+            lastUpdatedEntry.put(UpdatedKeys.LAST_UPDATED,
+                    lastUpdatedCursor.getLong(INDEX_LAST_UPDATED));
+            operations.add(
+                    ContentProviderOperation
+                            .newInsert(UpdatedKeys.CONTENT_URI)
+                            .withValues(lastUpdatedEntry)
+                            .build()
+            );
+        }
+        lastUpdatedCursor.close();
+
         try {
             // delete old version of this keyRing, which also deletes all keys and userIds on cascade
             int deleted = mContentResolver.delete(
@@ -725,7 +760,7 @@ public class ProviderHelper {
         LongSparseArray<WrappedSignature> trustedCerts = new LongSparseArray<>();
 
         @Override
-        public int compareTo(UserPacketItem o) {
+        public int compareTo(@NonNull UserPacketItem o) {
             // revoked keys always come last!
             //noinspection DoubleNegation
             if ((selfRevocation != null) != (o.selfRevocation != null)) {
@@ -736,6 +771,11 @@ public class ProviderHelper {
             // noinspection NumberEquality
             if (type != o.type) {
                 return type == null ? -1 : 1;
+            }
+            // if one is *trusted* but the other isn't, that one comes first
+            // this overrides the primary attribute, even!
+            if ( (trustedCerts.size() == 0) != (o.trustedCerts.size() == 0) ) {
+                return trustedCerts.size() > o.trustedCerts.size() ? -1 : 1;
             }
             // if one key is primary but the other isn't, the primary one always comes first
             if (isPrimary != o.isPrimary) {
@@ -790,7 +830,7 @@ public class ProviderHelper {
                 mIndent += 1;
                 for (CanonicalizedSecretKey sub : keyRing.secretKeyIterator()) {
                     long id = sub.getKeyId();
-                    SecretKeyType mode = sub.getSecretKeyType();
+                    SecretKeyType mode = sub.getSecretKeyTypeSuperExpensive();
                     values.put(Keys.HAS_SECRET, mode.getNum());
                     int upd = mContentResolver.update(uri, values, Keys.KEY_ID + " = ?",
                             new String[]{Long.toString(id)});
@@ -844,7 +884,7 @@ public class ProviderHelper {
     }
 
     public SaveKeyringResult savePublicKeyRing(UncachedKeyRing keyRing) {
-        return savePublicKeyRing(keyRing, new ProgressScaler());
+        return savePublicKeyRing(keyRing, new ProgressScaler(), null);
     }
 
     /**
@@ -853,7 +893,7 @@ public class ProviderHelper {
      * This is a high level method, which takes care of merging all new information into the old and
      * keep public and secret keyrings in sync.
      */
-    public SaveKeyringResult savePublicKeyRing(UncachedKeyRing publicRing, Progressable progress) {
+    public SaveKeyringResult savePublicKeyRing(UncachedKeyRing publicRing, Progressable progress, String expectedFingerprint) {
 
         try {
             long masterKeyId = publicRing.getMasterKeyId();
@@ -906,7 +946,8 @@ public class ProviderHelper {
             // If there is a secret key, merge new data (if any) and save the key for later
             CanonicalizedSecretKeyRing canSecretRing;
             try {
-                UncachedKeyRing secretRing = getCanonicalizedSecretKeyRing(publicRing.getMasterKeyId()).getUncachedKeyRing();
+                UncachedKeyRing secretRing = getCanonicalizedSecretKeyRing(publicRing.getMasterKeyId())
+                        .getUncachedKeyRing();
 
                 // Merge data from new public ring into secret one
                 log(LogType.MSG_IP_MERGE_SECRET);
@@ -923,6 +964,17 @@ public class ProviderHelper {
             } catch (NotFoundException e) {
                 // No secret key available (this is what happens most of the time)
                 canSecretRing = null;
+            }
+
+
+            // If we have an expected fingerprint, make sure it matches
+            if (expectedFingerprint != null) {
+                if (!canPublicRing.containsBoundSubkey(expectedFingerprint)) {
+                    log(LogType.MSG_IP_FINGERPRINT_ERROR);
+                    return new SaveKeyringResult(SaveKeyringResult.RESULT_ERROR, mLog, null);
+                } else {
+                    log(LogType.MSG_IP_FINGERPRINT_OK);
+                }
             }
 
             int result = saveCanonicalizedPublicKeyRing(canPublicRing, progress, canSecretRing != null);
@@ -1031,7 +1083,8 @@ public class ProviderHelper {
                 publicRing = secretRing.extractPublicKeyRing();
             }
 
-            CanonicalizedPublicKeyRing canPublicRing = (CanonicalizedPublicKeyRing) publicRing.canonicalize(mLog, mIndent);
+            CanonicalizedPublicKeyRing canPublicRing = (CanonicalizedPublicKeyRing) publicRing.canonicalize(mLog,
+                    mIndent);
             if (canPublicRing == null) {
                 return new SaveKeyringResult(SaveKeyringResult.RESULT_ERROR, mLog, null);
             }
@@ -1057,6 +1110,7 @@ public class ProviderHelper {
 
     }
 
+    @NonNull
     public ConsolidateResult consolidateDatabaseStep1(Progressable progress) {
 
         OperationLog log = new OperationLog();
@@ -1082,7 +1136,7 @@ public class ProviderHelper {
             indent += 1;
 
             final Cursor cursor = mContentResolver.query(KeyRingData.buildSecretKeyRingUri(),
-                    new String[]{ KeyRingData.KEY_RING_DATA }, null, null, null);
+                    new String[]{KeyRingData.KEY_RING_DATA}, null, null, null);
 
             if (cursor == null) {
                 log.add(LogType.MSG_CON_ERROR_DB, indent);
@@ -1124,6 +1178,7 @@ public class ProviderHelper {
                 }
 
             });
+            cursor.close();
 
         } catch (IOException e) {
             Log.e(Constants.TAG, "error saving secret", e);
@@ -1143,7 +1198,7 @@ public class ProviderHelper {
 
             final Cursor cursor = mContentResolver.query(
                     KeyRingData.buildPublicKeyRingUri(),
-                    new String[]{ KeyRingData.KEY_RING_DATA }, null, null, null);
+                    new String[]{KeyRingData.KEY_RING_DATA}, null, null, null);
 
             if (cursor == null) {
                 log.add(LogType.MSG_CON_ERROR_DB, indent);
@@ -1185,6 +1240,7 @@ public class ProviderHelper {
                 }
 
             });
+            cursor.close();
 
         } catch (IOException e) {
             Log.e(Constants.TAG, "error saving public", e);
@@ -1200,12 +1256,14 @@ public class ProviderHelper {
         return consolidateDatabaseStep2(log, indent, progress, false);
     }
 
+    @NonNull
     public ConsolidateResult consolidateDatabaseStep2(Progressable progress) {
         return consolidateDatabaseStep2(new OperationLog(), 0, progress, true);
     }
 
     private static boolean mConsolidateCritical = false;
 
+    @NonNull
     private ConsolidateResult consolidateDatabaseStep2(
             OperationLog log, int indent, Progressable progress, boolean recovery) {
 
@@ -1231,6 +1289,28 @@ public class ProviderHelper {
             }
 
             // 2. wipe database (IT'S DANGEROUS)
+
+            // first, backup our list of updated key times
+            ArrayList<ContentValues> updatedKeysValues = new ArrayList<>();
+            final int INDEX_MASTER_KEY_ID = 0;
+            final int INDEX_LAST_UPDATED = 1;
+            Cursor lastUpdatedCursor = mContentResolver.query(
+                    UpdatedKeys.CONTENT_URI,
+                    new String[]{
+                            UpdatedKeys.MASTER_KEY_ID,
+                            UpdatedKeys.LAST_UPDATED
+                    },
+                    null, null, null);
+            while (lastUpdatedCursor.moveToNext()) {
+                ContentValues values = new ContentValues();
+                values.put(UpdatedKeys.MASTER_KEY_ID,
+                        lastUpdatedCursor.getLong(INDEX_MASTER_KEY_ID));
+                values.put(UpdatedKeys.LAST_UPDATED,
+                        lastUpdatedCursor.getLong(INDEX_LAST_UPDATED));
+                updatedKeysValues.add(values);
+            }
+            lastUpdatedCursor.close();
+
             log.add(LogType.MSG_CON_DB_CLEAR, indent);
             mContentResolver.delete(KeyRings.buildUnifiedKeyRingsUri(), null, null);
 
@@ -1250,7 +1330,7 @@ public class ProviderHelper {
 
                     ImportKeyResult result = new ImportOperation(mContext, this,
                             new ProgressFixedScaler(progress, 10, 25, 100, R.string.progress_con_reimport))
-                            .serialKeyRingImport(itSecrets, numSecrets, null);
+                            .serialKeyRingImport(itSecrets, numSecrets, null, null);
                     log.add(result, indent);
                 } else {
                     log.add(LogType.MSG_CON_REIMPORT_SECRET_SKIP, indent);
@@ -1278,8 +1358,12 @@ public class ProviderHelper {
 
                     ImportKeyResult result = new ImportOperation(mContext, this,
                             new ProgressFixedScaler(progress, 25, 99, 100, R.string.progress_con_reimport))
-                            .serialKeyRingImport(itPublics, numPublics, null);
+                            .serialKeyRingImport(itPublics, numPublics, null, null);
                     log.add(result, indent);
+                    // re-insert our backed up list of updated key times
+                    // TODO: can this cause issues in case a public key re-import failed?
+                    mContentResolver.bulkInsert(UpdatedKeys.CONTENT_URI,
+                            updatedKeysValues.toArray(new ContentValues[updatedKeysValues.size()]));
                 } else {
                     log.add(LogType.MSG_CON_REIMPORT_PUBLIC_SKIP, indent);
                 }
@@ -1389,6 +1473,14 @@ public class ProviderHelper {
         return getKeyRingAsArmoredString(data);
     }
 
+    public Uri renewKeyLastUpdatedTime(long masterKeyId, long time, TimeUnit timeUnit) {
+        ContentValues values = new ContentValues();
+        values.put(UpdatedKeys.MASTER_KEY_ID, masterKeyId);
+        values.put(UpdatedKeys.LAST_UPDATED, timeUnit.toSeconds(time));
+
+        return mContentResolver.insert(UpdatedKeys.CONTENT_URI, values);
+    }
+
     public ArrayList<String> getRegisteredApiApps() {
         Cursor cursor = mContentResolver.query(ApiApps.CONTENT_URI, null, null, null, null);
 
@@ -1414,7 +1506,7 @@ public class ProviderHelper {
     private ContentValues contentValueForApiApps(AppSettings appSettings) {
         ContentValues values = new ContentValues();
         values.put(ApiApps.PACKAGE_NAME, appSettings.getPackageName());
-        values.put(ApiApps.PACKAGE_CERTIFICATE, appSettings.getPackageSignature());
+        values.put(ApiApps.PACKAGE_CERTIFICATE, appSettings.getPackageCertificate());
         return values;
     }
 
@@ -1426,9 +1518,9 @@ public class ProviderHelper {
         // DEPRECATED and thus hardcoded
         values.put(KeychainContract.ApiAccounts.COMPRESSION, CompressionAlgorithmTags.ZLIB);
         values.put(KeychainContract.ApiAccounts.ENCRYPTION_ALGORITHM,
-                PgpConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_PREFERRED);
+                PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.USE_DEFAULT);
         values.put(KeychainContract.ApiAccounts.HASH_ALORITHM,
-                PgpConstants.OpenKeychainHashAlgorithmTags.USE_PREFERRED);
+                PgpSecurityConstants.OpenKeychainHashAlgorithmTags.USE_DEFAULT);
         return values;
     }
 
@@ -1460,7 +1552,7 @@ public class ProviderHelper {
                 settings = new AppSettings();
                 settings.setPackageName(cursor.getString(
                         cursor.getColumnIndex(KeychainContract.ApiApps.PACKAGE_NAME)));
-                settings.setPackageSignature(cursor.getBlob(
+                settings.setPackageCertificate(cursor.getBlob(
                         cursor.getColumnIndex(KeychainContract.ApiApps.PACKAGE_CERTIFICATE)));
             }
         } finally {

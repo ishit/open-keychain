@@ -17,6 +17,10 @@
 
 package org.sufficientlysecure.keychain.ui;
 
+import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -29,10 +33,9 @@ import android.widget.TextView;
 
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.R;
-import org.sufficientlysecure.keychain.compatibility.ClipboardReflection;
 import org.sufficientlysecure.keychain.operations.results.DecryptVerifyResult;
 import org.sufficientlysecure.keychain.ui.util.Notify;
-import org.sufficientlysecure.keychain.util.ShareHelper;
+import org.sufficientlysecure.keychain.ui.util.Notify.Style;
 
 public class DisplayTextFragment extends DecryptFragment {
 
@@ -56,22 +59,6 @@ public class DisplayTextFragment extends DecryptFragment {
         return frag;
     }
 
-    /**
-     * Create Intent Chooser but exclude decrypt activites
-     */
-    private Intent sendWithChooserExcludingDecrypt(String text) {
-        Intent prototype = createSendIntent(text);
-        String title = getString(R.string.title_share_message);
-
-        // we don't want to decrypt the decrypted, no inception ;)
-        String[] blacklist = new String[]{
-                Constants.PACKAGE_NAME + ".ui.DecryptActivity",
-                "org.thialfihar.android.apg.ui.DecryptActivity"
-        };
-
-        return new ShareHelper(getActivity()).createChooserExcluding(prototype, title, blacklist);
-    }
-
     private Intent createSendIntent(String text) {
         Intent sendIntent = new Intent(Intent.ACTION_SEND);
         sendIntent.putExtra(Intent.EXTRA_TEXT, text);
@@ -80,8 +67,19 @@ public class DisplayTextFragment extends DecryptFragment {
     }
 
     private void copyToClipboard(String text) {
-        ClipboardReflection.copyToClipboard(getActivity(), text);
-        Notify.create(getActivity(), R.string.text_copied_to_clipboard, Notify.Style.OK).show();
+        Activity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
+
+        ClipboardManager clipMan = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipMan == null) {
+            Notify.create(activity, R.string.error_clipboard_copy, Style.ERROR).show();
+            return;
+        }
+
+        clipMan.setPrimaryClip(ClipData.newPlainText(Constants.CLIPBOARD_LABEL, text));
+        Notify.create(activity, R.string.text_copied_to_clipboard, Style.OK).show();
     }
 
     @Override
@@ -105,7 +103,7 @@ public class DisplayTextFragment extends DecryptFragment {
         Bundle args = getArguments();
 
         String plaintext = args.getString(ARG_PLAINTEXT);
-        DecryptVerifyResult result = args.getParcelable(ARG_DECRYPT_VERIFY_RESULT);
+        DecryptVerifyResult result =  args.getParcelable(ARG_DECRYPT_VERIFY_RESULT);
 
         // display signature result in activity
         mText.setText(plaintext);
@@ -131,11 +129,16 @@ public class DisplayTextFragment extends DecryptFragment {
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.decrypt_share: {
-                startActivity(sendWithChooserExcludingDecrypt(mText.getText().toString()));
+                startActivity(Intent.createChooser(createSendIntent(mText.getText().toString()),
+                        getString(R.string.title_share_message)));
                 break;
             }
             case R.id.decrypt_copy: {
                 copyToClipboard(mText.getText().toString());
+                break;
+            }
+            case R.id.decrypt_view_log: {
+                startDisplayLogActivity();
                 break;
             }
             default: {

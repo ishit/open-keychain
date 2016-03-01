@@ -64,7 +64,7 @@
         android:layout_alignParentBottom="true"
         android:layout_alignParentLeft="true"
         android:layout_alignParentStart="true"
-        android:background="@color/holo_gray_bright"
+        android:background="?attr/colorButtonRow"
         android:id="@+id/create_key_buttons">
 
         <TextView
@@ -74,6 +74,7 @@
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:layout_weight="1"
             android:text="@string/btn_back"
             android:textAllCaps="true"
@@ -91,6 +92,7 @@
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:layout_weight="1"
             android:text="@string/btn_next"
             android:textAllCaps="true"

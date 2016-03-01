@@ -1,11 +1,52 @@
 [//]: # (NOTE: Please put every sentence in its own line, Transifex puts every line in its own translation field!)
 
+## 3.8
+
+  * Redesigned key editing
+  * Choose remember time individually when entering passwords
+  * Facebook key import
+
+
+## 3.7
+
+  * Improved Android 6 support (permissions, integration into text selection)
+  * API: Version 10
+
+
+## 3.6
+
+  * Encrypted backups
+  * Security fixes based on external security audit
+  * YubiKey NEO key creation wizard
+  * Basic internal MIME support
+  * Automatic key synchronization
+  * Experimental feature: link keys to Github, Twitter accounts
+  * Experimental feature: key confirmation via phrases
+  * Experimental feature: dark theme
+  * API: Version 9
+
+
+## 3.5
+
+  * Sleutel intrekken bij verwijderen
+  * Verbeterde controles voor onveilige cryptografie
+  * Opgelost: Sluit OpenKeychain niet na eerste gebruik
+  * API: versie 8
+
+
+## 3.4
+
+  * Anoniem sleutels downloaden via Tor
+  * Proxy-ondersteuning
+  * Beter verwerken van YubiKey-fouten
+
 
 ## 3.3
 
-  * New decryption screen
-  * Decryption of multiple files at once
-  * Better handling of YubiKey errors
+  * Nieuw ontsleutelingsscherm
+  * Ontsleuteling van meerdere bestanden tegelijk
+  * Beter verwerken van YubiKey-fouten
+
 
 ## 3.2
 
